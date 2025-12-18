@@ -1,0 +1,2997 @@
+// COMPREHENSIVE National Emergency Healthcare System - Prisma Schema
+// Prisma 7.0+ Compatible Version
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+ 
+}
+
+// ANALYTICS & PERFORMANCE METRICS
+// ============================================================================
+
+model PerformanceMetrics {
+  id     String       @id @default(cuid())
+  date   DateTime
+  period MetricPeriod
+
+  hospitalId    String?
+  hospital      Hospital? @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  countyId      String?
+  nationalLevel Boolean   @default(false)
+
+  // Patient Flow Metrics
+  totalPatients    Int @default(0)
+  emergencyVisits  Int @default(0)
+  outpatientVisits Int @default(0)
+  admissions       Int @default(0)
+  discharges       Int @default(0)
+  deaths           Int @default(0)
+  referralsOut     Int @default(0)
+  referralsIn      Int @default(0)
+
+  // Triage Metrics
+  triageLevel1 Int @default(0)
+  triageLevel2 Int @default(0)
+  triageLevel3 Int @default(0)
+  triageLevel4 Int @default(0)
+  triageLevel5 Int @default(0)
+
+  // Wait Time Metrics
+  avgWaitTime       Float?
+  medianWaitTime    Float?
+  avgTriageTime     Float?
+  avgTreatmentTime  Float?
+  avgDoctorWaitTime Float?
+
+  // Service Quality
+  patientsSeen                Int @default(0)
+  patientsLeftBeforeTreatment Int @default(0)
+  readmissions30Days          Int @default(0)
+
+  // Bed Utilization
+  avgBedOccupancy       Float?
+  avgICUOccupancy       Float?
+  avgEmergencyOccupancy Float?
+  bedTurnoverRate       Float?
+
+  // Transfer Metrics
+  transfersRequested Int  @default(0)
+  transfersApproved  Int  @default(0)
+  transfersRejected  Int  @default(0)
+  avgTransferTime    Int?
+
+  // Ambulance Metrics
+  ambulanceDispatches Int    @default(0)
+  avgResponseTime     Float?
+  avgTransportTime    Float?
+
+  // Telemedicine
+  telemedicineSessions    Int    @default(0)
+  telemedicineSuccessRate Float?
+
+  // SHA Claims
+  claimsSubmitted        Int    @default(0)
+  claimsApproved         Int    @default(0)
+  claimsRejected         Int    @default(0)
+  claimsPending          Int    @default(0)
+  totalClaimValue        Float  @default(0)
+  totalApprovedValue     Float  @default(0)
+  avgClaimProcessingDays Float?
+
+  // Staff Metrics
+  doctorsOnDuty        Int?
+  nursesOnDuty         Int?
+  avgCaseloadPerDoctor Float?
+
+  // Resource Status
+  criticalShortages Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hospitalId])
+  @@index([countyId])
+  @@index([date])
+  @@index([period])
+  @@map("performance_metrics")
+}
+
+// MEDICAL HISTORY MODELS
+// ============================================================================
+
+model Treatment {
+  id              String @id @default(cuid())
+  treatmentNumber String @unique
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  // Treatment Details
+  procedureName String
+  description   String? @db.Text
+  procedureCode String? // CPT or local coding system
+  category      String // "SURGICAL", "MEDICAL", "DIAGNOSTIC", "THERAPEUTIC"
+
+  // Medical Context
+  diagnosis     String?  @db.Text
+  icd10Codes    String[]
+  indications   String?  @db.Text
+  complications String?  @db.Text
+  outcome       String? // "SUCCESSFUL", "PARTIAL", "COMPLICATED", "FAILED"
+
+  // Location & Personnel
+  hospitalId   String
+  hospital     Hospital    @relation(fields: [hospitalId], references: [id])
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  doctorId     String
+  doctor       Staff       @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  // Timing
+  treatmentDate DateTime
+  startTime     DateTime?
+  endTime       DateTime?
+  duration      Int? // minutes
+
+  // Anesthesia
+  anesthesiaType     String? // "GENERAL", "LOCAL", "REGIONAL", "SEDATION"
+  anesthesiaDuration Int? // minutes
+
+  // Equipment & Supplies
+  equipmentUsed   String[]
+  medicationsUsed Json[] // [{name, dosage, route}]
+  consumables     String[]
+
+  // Follow-up
+  followUpRequired     Boolean   @default(false)
+  followUpInstructions String?   @db.Text
+  nextAppointment      DateTime?
+
+  // Cost & Billing
+  cost       Float?
+  shaCovered Boolean @default(false)
+  shaClaimId String?
+
+  // Status
+  isCompleted Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([hospitalId])
+  @@index([doctorId])
+  @@index([treatmentDate])
+  @@index([procedureName])
+  @@map("treatments")
+}
+
+model LabTest {
+  id         String @id @default(cuid())
+  testNumber String @unique
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  // Test Details
+  testName               String
+  testCategory           String // "HEMATOLOGY", "BIOCHEMISTRY", "MICROBIOLOGY", "IMMUNOLOGY"
+  testCode               String? // LOINC code or local code
+  specimenType           String // "BLOOD", "URINE", "STOOL", "TISSUE", "SWAB"
+  specimenCollectionTime DateTime?
+
+  // Order Information
+  orderedById        String
+  orderedBy          Staff   @relation("LabOrderedBy", fields: [orderedById], references: [id], onDelete: Cascade)
+  orderingDepartment String?
+  clinicalIndication String? @db.Text
+
+  // Laboratory Information
+  hospitalId    String
+  hospital      Hospital @relation(fields: [hospitalId], references: [id])
+  labDepartment String?
+  processedById String?
+  processedBy   Staff?   @relation("LabProcessedBy", fields: [processedById], references: [id], onDelete: Cascade)
+
+  // Results
+  result         String? @db.Text
+  numericResult  Float?
+  unit           String?
+  referenceRange String?
+  abnormalFlag   String? // "HIGH", "LOW", "CRITICAL", "NORMAL"
+  criticalValue  Boolean @default(false)
+
+  // Status & Timing
+  status        LabTestStatus @default(PENDING)
+  orderedAt     DateTime      @default(now())
+  collectedAt   DateTime?
+  receivedAtLab DateTime?
+  processedAt   DateTime?
+  reportedAt    DateTime?
+  verifiedAt    DateTime?
+
+  // Turnaround Time
+  collectionToResultTime Int? // minutes
+  orderToResultTime      Int? // minutes
+
+  // Additional Data
+  methodology    String? // Testing method used
+  equipment      String? // Equipment used for testing
+  qualityControl Json? // QC data
+
+  // Follow-up
+  requiresFollowUp Boolean @default(false)
+  followUpTestId   String?
+
+  // Cost & Billing
+  cost       Float?
+  shaCovered Boolean @default(false)
+  shaClaimId String?
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([hospitalId])
+  @@index([orderedById])
+  @@index([testName])
+  @@index([status])
+  @@index([orderedAt])
+  @@map("lab_tests")
+}
+
+model Diagnosis {
+  id              String @id @default(cuid())
+  diagnosisNumber String @unique
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  // Diagnosis Details
+  condition        String
+  icd10Code        String?
+  icd10Description String?
+  category         String? // "PRIMARY", "SECONDARY", "CO_MORBIDITY"
+  type             String? // "ACUTE", "CHRONIC", "RECURRENT"
+
+  // Clinical Context
+  presentingComplaint     String? @db.Text
+  historyOfPresentIllness String? @db.Text
+  physicalExamFindings    String? @db.Text
+  diagnosticConfidence    Int?    @db.SmallInt // 1-5 scale
+
+  // Diagnosing Professional
+  diagnosedById String
+  diagnosedBy   Staff       @relation(fields: [diagnosedById], references: [id], onDelete: Cascade)
+  hospitalId    String
+  hospital      Hospital    @relation(fields: [hospitalId], references: [id])
+  departmentId  String?
+  department    Department? @relation(fields: [departmentId], references: [id])
+
+  // Timing
+  diagnosedAt DateTime  @default(now())
+  onsetDate   DateTime?
+  resolvedAt  DateTime?
+  isActive    Boolean   @default(true)
+
+  // Severity & Status
+  severity String? // "MILD", "MODERATE", "SEVERE"
+  stage    String? // Disease staging if applicable
+  status   DiagnosisStatus @default(ACTIVE)
+
+  // Related Information
+  relatedLabTests String[]
+  relatedImaging  String[]
+  riskFactors     String[]
+
+  // Treatment Plan
+  treatmentPlan    String? @db.Text
+  followUpRequired Boolean @default(false)
+  followUpSchedule String?
+
+  // Complications
+  complications String?  @db.Text
+  comorbidities String[]
+
+  // Prognosis
+  prognosis            String? // "GOOD", "FAIR", "POOR", "GUARDED"
+  expectedRecoveryTime String?
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([hospitalId])
+  @@index([diagnosedById])
+  @@index([condition])
+  @@index([icd10Code])
+  @@index([diagnosedAt])
+  @@index([isActive])
+  @@map("diagnoses")
+}
+
+model Medication {
+  id          String  @id @default(cuid())
+  name        String
+  genericName String?
+  brandName   String?
+
+  // Classification
+  category         String // "ANTIBIOTIC", "ANALGESIC", "CARDIOVASCULAR", etc.
+  therapeuticClass String?
+  atcCode          String? // Anatomical Therapeutic Chemical code
+
+  // Formulation
+  form     String // "TABLET", "CAPSULE", "INJECTION", "SYRUP"
+  strength String? // "500mg", "10mg/mL"
+  unit     String? // "mg", "mcg", "mL"
+
+  // Administration
+  route String? // "ORAL", "IV", "IM", "TOPICAL"
+
+  // Safety
+  sideEffects       String? @db.Text
+  contraindications String? @db.Text
+  pregnancyCategory String? // "A", "B", "C", "D", "X"
+
+  // Storage
+  storageInstructions String?
+
+  // Regulatory
+  licenseNumber String?
+  manufacturer  String?
+
+  // Cost
+  unitCost    Float?
+  isEssential Boolean @default(true) // Kenya Essential Medicines List
+
+  isActive Boolean @default(true)
+
+  prescriptions Prescription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@index([genericName])
+  @@index([category])
+  @@index([isEssential])
+  @@index([isActive])
+  @@map("medications")
+}
+
+model Prescription {
+  id                 String @id @default(cuid())
+  prescriptionNumber String @unique
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  medicationId String
+  medication   Medication @relation(fields: [medicationId], references: [id])
+
+  // Prescription Details
+  dosage    String // "500mg", "10mL"
+  frequency String // "BD", "TDS", "QID", "ONCE"
+  route     String // "ORAL", "IV", "IM", "TOPICAL"
+  duration  String? // "7 days", "10 days"
+  quantity  Int? // Total quantity prescribed
+  unit      String? // "tablets", "bottles", "tubes"
+
+  // Timing
+  startDate     DateTime?
+  endDate       DateTime?
+  asNeeded      Boolean   @default(false)
+  prnIndication String? // When to take if as needed
+
+  // Instructions
+  instructions        String? @db.Text
+  specialInstructions String? @db.Text
+
+  // Prescribing Information
+  prescribedById String
+  prescribedBy   Staff       @relation(fields: [prescribedById], references: [id], onDelete: Cascade)
+  hospitalId     String
+  hospital       Hospital    @relation(fields: [hospitalId], references: [id])
+  departmentId   String?
+  department     Department? @relation(fields: [departmentId], references: [id])
+
+  // Status
+  status         PrescriptionStatus @default(ACTIVE)
+  isDispensed    Boolean            @default(false)
+  dispensedAt    DateTime?
+  dispensedBy    String?
+  refillsAllowed Int                @default(0)
+  refillsUsed    Int                @default(0)
+
+  // Review
+  requiresReview Boolean   @default(false)
+  reviewDate     DateTime?
+
+  // Cost & Billing
+  cost       Float?
+  shaCovered Boolean @default(false)
+  shaClaimId String?
+
+  // Safety
+  allergyCheckPerformed Boolean @default(true)
+  interactionsChecked   Boolean @default(true)
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([medicationId])
+  @@index([prescribedById])
+  @@index([hospitalId])
+  @@index([status])
+  @@index([status, startDate])
+  @@map("prescriptions")
+}
+
+model Visit {
+  id          String @id @default(cuid())
+  visitNumber String @unique
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  // Visit Details
+  visitType               VisitType
+  purpose                 String?   @db.Text
+  chiefComplaint          String?   @db.Text
+  historyOfPresentIllness String?   @db.Text
+
+  // Location
+  hospitalId   String
+  hospital     Hospital    @relation(fields: [hospitalId], references: [id])
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  // Healthcare Team
+  doctorId String
+  doctor   Staff   @relation("VisitDoctor", fields: [doctorId], references: [id], onDelete: Cascade)
+  nurseId  String?
+  nurse    Staff?  @relation("VisitNurse", fields: [nurseId], references: [id], onDelete: Cascade)
+
+  // Timing
+  visitDate        DateTime  @default(now())
+  arrivalTime      DateTime?
+  seenTime         DateTime?
+  departureTime    DateTime?
+  waitTime         Int? // minutes
+  consultationTime Int? // minutes
+
+  // Clinical Assessment
+  vitalSigns   Json? // {bp, pulse, temp, respRate, o2Sat}
+  physicalExam String? @db.Text
+  assessment   String? @db.Text
+  plan         String? @db.Text
+
+  // Procedures During Visit
+  procedures   String[]
+  testsOrdered String[]
+
+  // Follow-up
+  followUpRequired     Boolean   @default(false)
+  followUpDate         DateTime?
+  followUpInstructions String?   @db.Text
+
+  // Outcome
+  disposition Disposition?
+  referredTo  String?
+  admitted    Boolean      @default(false)
+
+  // Billing
+  consultationFee Float?
+  procedureFees   Float?  @default(0)
+  totalCharge     Float?
+  shaCovered      Boolean @default(false)
+  shaClaimId      String?
+
+  // Status
+  status VisitStatus @default(COMPLETED)
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([hospitalId])
+  @@index([doctorId])
+  @@index([visitType])
+  @@index([visitDate])
+  @@index([disposition])
+  @@map("visits")
+}
+
+// ============================================================================
+// ADDITIONAL ENUMS FOR MEDICAL HISTORY
+// ============================================================================
+
+enum LabTestStatus {
+  PENDING
+  COLLECTED
+  IN_PROGRESS
+  COMPLETED
+  VERIFIED
+  CANCELLED
+  REJECTED
+}
+
+enum DiagnosisStatus {
+  SUSPECTED
+  CONFIRMED
+  ACTIVE
+  RESOLVED
+  CHRONIC
+  RULED_OUT
+}
+
+enum PrescriptionStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  DISCONTINUED
+}
+
+enum VisitStatus {
+  SCHEDULED
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+// System Audit Logs (Track all critical actions)
+model AuditLog {
+  id String @id @default(cuid())
+
+  // Actor
+  userId   String
+  userRole String
+  userName String
+
+  // Action
+  action     AuditAction
+  entityType String // "PATIENT", "TRANSFER", "CLAIM", etc.
+  entityId   String
+
+  // Details
+  description String @db.Text
+  changes     Json? // {field: {old: value, new: value}}
+
+  // Context
+  ipAddress  String?
+  userAgent  String?
+  facilityId String?
+
+  // Result
+  success      Boolean @default(true)
+  errorMessage String?
+
+  timestamp DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+// System Alerts (Critical notifications)
+model SystemAlert {
+  id          String @id @default(cuid())
+  alertNumber String @unique
+
+  // Alert Details
+  alertType AlertType
+  severity  AlertSeverity
+  title     String
+  message   String        @db.Text
+
+  // Source
+  sourceType String // "HOSPITAL", "RESOURCE", "AMBULANCE", "SYSTEM"
+  sourceId   String?
+  hospitalId String?
+  countyId   String?
+
+  // Audience
+  audienceType AudienceType // "SPECIFIC_HOSPITAL", "COUNTY", "REGION", "NATIONAL"
+  targetRoles  String[] // ["DOCTOR", "ADMIN", "DISPATCHER"]
+
+  // Status
+  status         AlertStatus @default(ACTIVE)
+  isAcknowledged Boolean     @default(false)
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+
+  // Action Required
+  requiresAction Boolean @default(false)
+  actionTaken    String? @db.Text
+
+  // Priority
+  priority Int @default(3) // 1-5 (1=highest)
+
+  // Lifecycle
+  expiresAt  DateTime?
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([alertType])
+  @@index([severity])
+  @@index([status])
+  @@index([hospitalId])
+  @@index([countyId])
+  @@index([createdAt])
+  @@map("system_alerts")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum AlertLevel {
+  NORMAL
+  ADVISORY
+  WARNING
+  CRITICAL
+  EMERGENCY
+}
+
+enum HospitalType {
+  PUBLIC
+  PRIVATE
+  FAITH_BASED
+  MISSION
+  MILITARY
+  SPECIALIZED
+  NGO
+}
+
+enum HospitalLevel {
+  LEVEL_4 // County referral hospitals
+  LEVEL_5 // Regional referral hospitals
+  LEVEL_6 // National referral hospitals
+}
+
+enum Ownership {
+  COUNTY_GOVERNMENT
+  NATIONAL_GOVERNMENT
+  PRIVATE
+  FAITH_BASED
+  NGO
+  COMMUNITY
+}
+
+enum PowerStatus {
+  GRID
+  GENERATOR
+  SOLAR
+  HYBRID
+  NONE
+  UNSTABLE
+}
+
+enum WaterStatus {
+  AVAILABLE
+  LIMITED
+  UNAVAILABLE
+  RATIONED
+}
+
+enum OxygenStatus {
+  AVAILABLE
+  LIMITED
+  CRITICAL
+  UNAVAILABLE
+}
+
+enum InternetStatus {
+  AVAILABLE
+  INTERMITTENT
+  UNAVAILABLE
+  SLOW
+}
+
+enum KEPHLevel {
+  LEVEL_1
+  LEVEL_2
+  LEVEL_3
+  LEVEL_4
+  LEVEL_5
+  LEVEL_6
+}
+
+enum OperationalStatus {
+  OPERATIONAL
+  LIMITED_CAPACITY
+  OVERWHELMED
+  CLOSED
+  EMERGENCY_ONLY
+  MAINTENANCE
+}
+
+enum AutonomyLevel {
+  FULLY_AUTONOMOUS
+  SEMI_AUTONOMOUS
+  COUNTY_MANAGED
+  NATIONAL_OVERSIGHT
+}
+
+enum HealthCenterLevel {
+  LEVEL_2
+  LEVEL_3
+}
+
+enum DepartmentType {
+  ACCIDENT_EMERGENCY
+  ICU
+  HDU
+  GENERAL_WARD
+  MATERNITY
+  PEDIATRICS
+  SURGERY
+  TRAUMA
+  CARDIOLOGY
+  NEUROLOGY
+  ONCOLOGY
+  ORTHOPEDICS
+  RADIOLOGY
+  LABORATORY
+  PHARMACY
+  MORTUARY
+  OUTPATIENT
+  DIALYSIS
+  OTHER
+}
+
+enum FacilityType {
+  HOSPITAL
+  HEALTH_CENTER
+  DISPENSARY
+}
+
+enum StaffRole {
+  MEDICAL_OFFICER
+  CLINICAL_OFFICER
+  NURSE
+  NURSING_OFFICER
+  PARAMEDIC
+  SURGEON
+  SPECIALIST
+  CONSULTANT
+  TRIAGE_NURSE
+  EMERGENCY_TECHNICIAN
+  PHARMACIST
+  LAB_TECHNICIAN
+  RADIOGRAPHER
+  ANESTHETIST
+  ADMINISTRATOR
+  MEDICAL_SUPERINTENDENT
+  HOSPITAL_DIRECTOR
+  DISPATCHER
+  AMBULANCE_DRIVER
+  SUPPORT_STAFF
+}
+
+enum EmploymentType {
+  PERMANENT
+  CONTRACT
+  TEMPORARY
+  INTERN
+  VOLUNTEER
+}
+
+enum ContractType {
+  COUNTY
+  NATIONAL
+  PRIVATE
+  NGO
+}
+
+enum CHPTrainingLevel {
+  BASIC
+  INTERMEDIATE
+  ADVANCED
+  CERTIFIED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum BloodType {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+  UNKNOWN
+}
+
+enum SHAStatus {
+  REGISTERED
+  NOT_REGISTERED
+  PENDING
+  SUSPENDED
+  INACTIVE
+}
+
+enum ContributionStatus {
+  UP_TO_DATE
+  ARREARS
+  GRACE_PERIOD
+  DEFAULTED
+  UNKNOWN
+}
+
+enum PatientStatus {
+  REGISTERED
+  IN_TRIAGE
+  IN_TREATMENT
+  IN_SURGERY
+  ADMITTED
+  IN_ICU
+  IN_TRANSFER
+  DISCHARGED
+  DECEASED
+  ABSCONDED
+}
+
+enum ArrivalMode {
+  WALK_IN
+  AMBULANCE
+  PRIVATE_VEHICLE
+  POLICE
+  CARRIED
+  REFERRAL
+  OTHER
+}
+
+enum TriageLevel {
+  IMMEDIATE // Red - ESI 1
+  URGENT // Orange - ESI 2
+  LESS_URGENT // Yellow - ESI 3
+  NON_URGENT // Green - ESI 4-5
+  DECEASED // Black
+}
+
+enum TriageStatus {
+  WAITING
+  IN_ASSESSMENT
+  IN_TREATMENT
+  AWAITING_ADMISSION
+  AWAITING_TRANSFER
+  ADMITTED
+  DISCHARGED
+  LEFT_BEFORE_TREATMENT
+  DECEASED
+}
+
+enum Disposition {
+  DISCHARGED_HOME
+  ADMITTED
+  TRANSFERRED
+  REFERRED
+  LEFT_AMA // Against Medical Advice
+  DECEASED
+  ABSCONDED
+}
+
+enum ReferralOriginType {
+  DISPENSARY
+  HEALTH_CENTER
+  HOSPITAL
+  CHP
+  COMMUNITY
+}
+
+enum ReferralUrgency {
+  IMMEDIATE
+  URGENT
+  ROUTINE
+  SCHEDULED
+}
+
+enum ReferralStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum ConsultationType {
+  EMERGENCY
+  SPECIALIST
+  SECOND_OPINION
+  FOLLOW_UP
+  DIAGNOSTIC_REVIEW
+}
+
+enum ConnectionQuality {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  FAILED
+}
+
+enum TelemedicineStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  TECHNICAL_FAILURE
+}
+
+enum ResourceType {
+  BED
+  ICU_BED
+  VENTILATOR
+  MONITOR
+  DEFIBRILLATOR
+  DIALYSIS_MACHINE
+  OXYGEN_SUPPLY
+  OXYGEN_CONCENTRATOR
+  MEDICATION
+  BLOOD_PRODUCT
+  PPE
+  SURGICAL_EQUIPMENT
+  IMAGING_EQUIPMENT
+  LABORATORY_REAGENT
+  MEDICAL_SUPPLY
+  OTHER
+}
+
+enum ResourceStatus {
+  AVAILABLE
+  IN_USE
+  RESERVED
+  MAINTENANCE
+  OUT_OF_ORDER
+  DEPLETED
+  EXPIRED
+}
+
+enum RequestPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SupplyRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ORDERED
+  DELIVERED
+  CANCELLED
+}
+
+enum ProcurementType {
+  MEDICAL_EQUIPMENT
+  PHARMACEUTICALS
+  LABORATORY_SUPPLIES
+  SURGICAL_SUPPLIES
+  GENERAL_SUPPLIES
+  SERVICES
+}
+
+enum ProcurementStatus {
+  INITIATED
+  TENDER_ISSUED
+  EVALUATION
+  AWARDED
+  CONTRACTED
+  COMPLETED
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  PENDING
+  IN_TRANSIT
+  DELIVERED
+  PARTIAL_DELIVERY
+  DELAYED
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  PAID
+  PARTIALLY_PAID
+  OVERDUE
+  DISPUTED
+}
+
+enum AmbulanceType {
+  BLS // Basic Life Support
+  ALS // Advanced Life Support
+  CRITICAL_CARE
+  AIR_AMBULANCE
+  PATIENT_TRANSPORT
+  MOBILE_CLINIC
+}
+
+enum EquipmentLevel {
+  BASIC
+  INTERMEDIATE
+  ADVANCED
+  CRITICAL_CARE
+}
+
+enum AmbulanceStatus {
+  AVAILABLE
+  DISPATCHED
+  ON_SCENE
+  TRANSPORTING
+  AT_HOSPITAL
+  RETURNING
+  UNAVAILABLE
+  MAINTENANCE
+  OUT_OF_SERVICE
+}
+
+enum EmergencyType {
+  MEDICAL
+  TRAUMA
+  OBSTETRIC
+  PEDIATRIC
+  CARDIAC
+  STROKE
+  RESPIRATORY
+  MASS_CASUALTY
+  NATURAL_DISASTER
+  TRAFFIC_ACCIDENT
+  FIRE
+  DROWNING
+  POISONING
+  ASSAULT
+  OTHER
+}
+
+enum DispatchSeverity {
+  CRITICAL
+  URGENT
+  NON_URGENT
+  ROUTINE
+}
+
+enum DispatchStatus {
+  RECEIVED
+  ASSESSING
+  DISPATCHED
+  EN_ROUTE
+  ON_SCENE
+  TRANSPORTING
+  AT_HOSPITAL
+  COMPLETED
+  CANCELLED
+  NO_AMBULANCE_AVAILABLE
+}
+
+enum DispatchOutcome {
+  TRANSPORTED
+  TREATED_ON_SCENE
+  REFUSED_TRANSPORT
+  CANCELLED_BY_CALLER
+  FALSE_ALARM
+  PATIENT_NOT_FOUND
+  DEAD_ON_ARRIVAL
+}
+
+enum TransferUrgency {
+  IMMEDIATE
+  URGENT
+  SCHEDULED
+  ROUTINE
+}
+
+enum TransportMode {
+  AMBULANCE
+  AIR_AMBULANCE
+  PRIVATE_VEHICLE
+  INTER_FACILITY_TRANSPORT
+  PUBLIC_TRANSPORT
+}
+
+enum TransferStatus {
+  REQUESTED
+  PENDING_APPROVAL
+  APPROVED
+  IN_TRANSIT
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum EmergencySeverity {
+  MINOR
+  MODERATE
+  SEVERE
+  MAJOR
+  CATASTROPHIC
+}
+
+enum EmergencyStatus {
+  REPORTED
+  CONFIRMED
+  RESPONDING
+  ON_SCENE
+  UNDER_CONTROL
+  RESOLVED
+  ARCHIVED
+}
+
+enum ResponseStatus {
+  DISPATCHED
+  EN_ROUTE
+  ON_SCENE
+  TREATING
+  TRANSPORTING
+  COMPLETED
+  CANCELLED
+}
+
+enum ServiceType {
+  OUTPATIENT
+  INPATIENT
+  EMERGENCY
+  SURGERY
+  MATERNITY
+  LABORATORY
+  RADIOLOGY
+  PHYSIOTHERAPY
+  COUNSELING
+  DENTAL
+  OPTICAL
+  OTHER
+}
+
+enum VisitType {
+  FIRST_VISIT
+  FOLLOW_UP
+  REFERRAL
+  EMERGENCY
+  READMISSION
+}
+
+enum ClaimStatus {
+  DRAFT
+  SUBMITTED
+  RECEIVED
+  IN_REVIEW
+  APPROVED
+  PARTIALLY_APPROVED
+  REJECTED
+  PAID
+  RESUBMITTED
+}
+
+enum FinancialRecordType {
+  REVENUE
+  EXPENDITURE
+  DISBURSEMENT
+  ALLOCATION
+}
+
+enum FinancialCategory {
+  SHA_REIMBURSEMENT
+  COUNTY_ALLOCATION
+  NATIONAL_ALLOCATION
+  USER_FEES
+  DONOR_FUNDING
+  PROCUREMENT
+  SALARIES
+  MAINTENANCE
+  UTILITIES
+  SUPPLIES
+  OTHER
+}
+
+enum FinancialStatus {
+  PENDING
+  APPROVED
+  RECEIVED
+  CLEARED
+  OVERDUE
+  DISPUTED
+}
+
+enum MetricPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  APPROVE
+  REJECT
+  TRANSFER
+  DISCHARGE
+  PRESCRIBE
+  SUBMIT_CLAIM
+  CANCEL
+  OVERRIDE
+}
+
+enum AlertType {
+  RESOURCE_SHORTAGE
+  STAFF_SHORTAGE
+  BED_CAPACITY
+  AMBULANCE_UNAVAILABLE
+  SYSTEM_ERROR
+  SECURITY
+  FINANCIAL
+  PATIENT_CRITICAL
+  EMERGENCY_DECLARED
+  EQUIPMENT_FAILURE
+  POWER_OUTAGE
+  NETWORK_DOWN
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+  EMERGENCY
+}
+
+enum AlertStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+  EXPIRED
+}
+
+enum AudienceType {
+  SPECIFIC_USER
+  SPECIFIC_HOSPITAL
+  COUNTY
+  REGION
+  NATIONAL
+  ALL_DISPATCHERS
+  ALL_DOCTORS
+  ALL_ADMINS
+}
+
+// ============================================================================
+// RESOURCE MANAGEMENT & SUPPLY CHAIN
+// ============================================================================
+
+model Resource {
+  id       String       @id @default(cuid())
+  name     String
+  type     ResourceType
+  category String
+
+  hospitalId   String
+  hospital     Hospital    @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  // Capacity
+  totalCapacity     Int
+  availableCapacity Int
+  reservedCapacity  Int    @default(0)
+  inUseCapacity     Int    @default(0)
+  unit              String // "beds", "units", "liters", "doses"
+
+  // Critical thresholds
+  minimumLevel  Int? // Alert when below
+  criticalLevel Int? // Emergency alert
+  reorderLevel  Int?
+  maxCapacity   Int?
+
+  // Status
+  status        ResourceStatus @default(AVAILABLE)
+  isOperational Boolean        @default(true)
+  isCritical    Boolean        @default(false)
+  isShared      Boolean        @default(false) // Can be shared with other facilities
+
+  // Maintenance
+  lastMaintenance     DateTime?
+  nextMaintenance     DateTime?
+  maintenanceSchedule String? // "MONTHLY", "QUARTERLY"
+  maintenanceNotes    String?   @db.Text
+
+  // Supply Chain
+  supplier            String?
+  supplierContact     String?
+  lastRestock         DateTime?
+  lastRestockQuantity Int?
+  expiryDate          DateTime?
+  batchNumber         String?
+
+  // Cost
+  unitCost   Float?
+  totalValue Float?
+
+  specifications Json?
+  notes          String? @db.Text
+
+  // Usage tracking
+  usageHistory Json[] // [{date, quantityUsed, purpose}]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hospitalId])
+  @@index([departmentId])
+  @@index([type])
+  @@index([status])
+  @@index([isCritical])
+  @@index([expiryDate])
+  @@map("resources")
+}
+
+// Supply Request System (addresses procurement delays)
+model SupplyRequest {
+  id            String @id @default(cuid())
+  requestNumber String @unique
+
+  hospitalId String
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+
+  // Request Details
+  items              Json[] // [{name, type, quantity, urgency, estimatedCost}]
+  totalEstimatedCost Float
+  justification      String          @db.Text
+  priority           RequestPriority
+
+  // Approval Chain
+  requestedBy      String // Staff name
+  requestedByRole  String
+  approvedByHOD    Boolean @default(false)
+  approvedByAdmin  Boolean @default(false)
+  approvedByCounty Boolean @default(false)
+
+  // County Procurement
+  countyApproverName  String?
+  countyApprovalNotes String? @db.Text
+
+  // Status
+  status          SupplyRequestStatus @default(PENDING)
+  requestedAt     DateTime            @default(now())
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?             @db.Text
+  orderedAt       DateTime?
+  deliveredAt     DateTime?
+
+  // Fulfillment
+  supplierSelected    String?
+  purchaseOrderNumber String?
+  deliveryNotes       String? @db.Text
+  actualCost          Float?
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hospitalId])
+  @@index([status])
+  @@index([priority])
+  @@index([requestedAt])
+  @@map("supply_requests")
+}
+
+// County-level Procurement (addresses autonomy issues)
+model Procurement {
+  id                String @id @default(cuid())
+  procurementNumber String @unique
+
+  hospitalId String
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+
+  // Procurement Details
+  procurementType ProcurementType
+  items           Json[] // [{name, quantity, unitCost, totalCost}]
+  totalValue      Float
+
+  // Supplier
+  supplierName    String
+  supplierContact String
+  contractNumber  String?
+
+  // Approval & Process
+  tenderNumber      String?
+  approvalAuthority String // "HOSPITAL_BOARD", "COUNTY_PROCUREMENT", "NATIONAL"
+  approvedBy        String?
+  approvalDate      DateTime?
+
+  // Delivery
+  expectedDeliveryDate DateTime?
+  actualDeliveryDate   DateTime?
+  deliveryStatus       DeliveryStatus @default(PENDING)
+
+  // Payment
+  paymentStatus PaymentStatus @default(PENDING)
+  paymentAmount Float?
+  paymentDate   DateTime?
+
+  status ProcurementStatus @default(INITIATED)
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hospitalId])
+  @@index([status])
+  @@index([deliveryStatus])
+  @@index([paymentStatus])
+  @@map("procurements")
+}
+
+// ============================================================================
+// AMBULANCE & DISPATCH SYSTEM (999/911 Integration)
+// ============================================================================
+
+// County-level ambulance fleet
+model CountyAmbulance {
+  id                 String @id @default(cuid())
+  registrationNumber String @unique
+
+  countyId        String
+  county          County @relation(fields: [countyId], references: [id])
+  baseStation     String // Sub-county or facility
+  baseCoordinates Json?
+
+  type           AmbulanceType
+  equipmentLevel EquipmentLevel
+
+  // Crew
+  driverName    String?
+  driverPhone   String?
+  driverLicense String?
+
+  // Equipment
+  hasGPS           Boolean @default(false)
+  hasRadio         Boolean @default(true)
+  hasOxygen        Boolean @default(true)
+  hasDefibrillator Boolean @default(false)
+
+  // Status
+  status            AmbulanceStatus @default(AVAILABLE)
+  currentLocation   Json?
+  lastKnownLocation Json?
+
+  // Maintenance
+  lastServiceDate DateTime?
+  nextServiceDate DateTime?
+  mileage         Int?
+  fuelLevel       Float?
+
+  isOperational Boolean @default(true)
+
+  dispatchLogs DispatchLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countyId])
+  @@index([status])
+  @@index([isOperational])
+  @@map("county_ambulances")
+}
+
+// Hospital-based ambulances
+model Ambulance {
+  id                 String @id @default(cuid())
+  registrationNumber String @unique
+
+  hospitalId String
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+
+  type           AmbulanceType
+  equipmentLevel EquipmentLevel
+
+  // Equipment
+  hasGPS           Boolean @default(false)
+  hasRadio         Boolean @default(true)
+  hasOxygen        Boolean @default(true)
+  hasDefibrillator Boolean @default(false)
+  hasVentilator    Boolean @default(false)
+  hasMonitor       Boolean @default(false)
+
+  // Crew
+  driverName       String?
+  driverPhone      String?
+  driverLicense    String?
+  paramedicName    String?
+  paramedicLicense String?
+  crewSize         Int     @default(2)
+
+  // Status & Location
+  status            AmbulanceStatus @default(AVAILABLE)
+  currentLocation   Json? // {lat, lng, timestamp, accuracy}
+  lastKnownLocation Json?
+
+  // Tracking
+  lastServiceDate DateTime?
+  nextServiceDate DateTime?
+  mileage         Int?
+  fuelLevel       Float?
+  odometerReading Int?
+
+  isOperational Boolean @default(true)
+
+  // Relations
+  transfers    Transfer[]
+  emergencies  EmergencyResponse[]
+  dispatchLogs DispatchLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hospitalId])
+  @@index([status])
+  @@index([isOperational])
+  @@map("ambulances")
+}
+
+// Dispatch Centers (County-level 999/911 centers)
+model DispatchCenter {
+  id   String @id @default(cuid())
+  name String
+  code String @unique
+
+  countyId String
+  county   County @relation(fields: [countyId], references: [id])
+
+  // Contact
+  emergencyNumber String // "999" or county-specific
+  phone           String
+  coordinates     Json
+
+  // Coverage
+  coverageArea String[] // Sub-counties covered
+
+  // Status
+  isActive Boolean @default(true)
+  is24Hour Boolean @default(true)
+
+  // Staff
+  dispatchersOnDuty Int @default(0)
+
+  dispatchLogs DispatchLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countyId])
+  @@index([isActive])
+  @@map("dispatch_centers")
+}
+
+// Centralized Emergency Dispatch Logs
+model DispatchLog {
+  id             String @id @default(cuid())
+  dispatchNumber String @unique
+
+  // Dispatch Center
+  dispatchCenterId String?
+  dispatchCenter   DispatchCenter? @relation(fields: [dispatchCenterId], references: [id])
+
+  // Caller Information
+  callerPhone    String
+  callerName     String?
+  callerLocation String? // Description: "Near Kenyatta Market"
+  coordinates    Json? // {lat, lng, accuracy}
+  what3words     String? // Precise location
+  landmark       String?
+
+  // Emergency Details
+  emergencyType EmergencyType
+  description   String           @db.Text
+  severity      DispatchSeverity
+  patientCount  Int              @default(1)
+  ageGroups     String[] // ["ADULT", "CHILD", "INFANT"]
+
+  // Dispatch Decision
+  ambulanceType     AmbulanceType?
+  ambulanceId       String?
+  ambulance         Ambulance?       @relation(fields: [ambulanceId], references: [id])
+  countyAmbulanceId String?
+  countyAmbulance   CountyAmbulance? @relation(fields: [countyAmbulanceId], references: [id])
+
+  dispatcherId String?
+  dispatcher   Staff?  @relation(fields: [dispatcherId], references: [id])
+
+  nearestHospitalId     String?
+  destinationHospitalId String?
+
+  // Pre-hospital Instructions
+  instructionsGiven String? @db.Text
+  cprInstructed     Boolean @default(false)
+
+  // Timeline (Critical Metrics)
+  callReceived      DateTime  @default(now())
+  locationConfirmed DateTime?
+  dispatched        DateTime?
+  arrivedOnScene    DateTime?
+  patientLoaded     DateTime?
+  departedScene     DateTime?
+  arrivedHospital   DateTime?
+  handoverCompleted DateTime?
+  cleared           DateTime?
+
+  // Response Metrics (in seconds)
+  callProcessingTime Int? // callReceived to dispatched
+  dispatchTime       Int? // callReceived to ambulance moving
+  responseTime       Int? // dispatched to arrivedOnScene
+  sceneTime          Int? // arrivedOnScene to departedScene
+  transportTime      Int? // departedScene to arrivedHospital
+  totalTime          Int? // callReceived to handoverCompleted
+
+  // Outcome
+  status                    DispatchStatus   @default(RECEIVED)
+  outcome                   DispatchOutcome?
+  patientsTransported       Int              @default(0)
+  patientConditionOnArrival String?
+
+  // Issues
+  delayReasons  String[] // ["TRAFFIC", "POOR_ROADS", "FUEL", "AMBULANCE_BREAKDOWN"]
+  complications String?  @db.Text
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dispatchCenterId])
+  @@index([status])
+  @@index([emergencyType])
+  @@index([severity])
+  @@index([callReceived])
+  @@index([ambulanceId])
+  @@map("dispatch_logs")
+}
+
+// ============================================================================
+// TRANSFERS & INTER-FACILITY COORDINATION
+// ============================================================================
+
+model Transfer {
+  id             String @id @default(cuid())
+  transferNumber String @unique
+
+  patientId   String
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  triageEntry TriageEntry?
+
+  // Origin
+  originHospitalId   String
+  originHospital     Hospital @relation("TransferOrigin", fields: [originHospitalId], references: [id])
+  originDepartment   String
+  originContactName  String?
+  originContactPhone String?
+
+  // Destination
+  destinationHospitalId String
+  destinationHospital   Hospital @relation("TransferDestination", fields: [destinationHospitalId], references: [id])
+  destinationDepartment String
+  acceptedByName        String?
+  acceptedByPhone       String?
+  bedReserved           Boolean  @default(false)
+  bedNumber             String?
+
+  // Reason & Medical Condition
+  reason         String   @db.Text
+  diagnosis      String   @db.Text
+  icd10Codes     String[]
+  vitalSigns     Json // Current vitals
+  consciousness  String // GCS or AVPU
+  oxygenRequired Boolean  @default(false)
+  oxygenRate     Float? // L/min
+  ivFluids       Boolean  @default(false)
+  medications    Json[] // [{name, dose, route, frequency}]
+  allergies      String[]
+  specialNeeds   String?  @db.Text
+
+  // Transfer Priority
+  urgency            TransferUrgency
+  requiredResources  String[] // ["ICU_BED", "VENTILATOR", "DIALYSIS"]
+  requiredSpecialist String?
+
+  // Transport
+  transportMode     TransportMode
+  ambulanceId       String?
+  ambulance         Ambulance?    @relation(fields: [ambulanceId], references: [id])
+  escortingStaff    Json? // [{name, role, license}]
+  transferDocuments String[] // URLs to scanned documents
+
+  // Distance & Route
+  estimatedDistance Float? // Kilometers
+  estimatedDuration Int? // Minutes
+  routeConditions   String? // "GOOD", "FAIR", "POOR"
+
+  // Financial
+  estimatedCost       Float?
+  shaCovered          Boolean @default(false)
+  shaPreAuthorization String?
+  patientPayment      Float?
+
+  // Status & Timeline
+  status             TransferStatus @default(REQUESTED)
+  requestedAt        DateTime       @default(now())
+  approvedAt         DateTime?
+  rejectedAt         DateTime?
+  rejectionReason    String?        @db.Text
+  departureTime      DateTime?
+  arrivalTime        DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+
+  // Personnel
+  initiatedById String
+  initiatedBy   Staff   @relation(fields: [initiatedById], references: [id])
+  approvedById  String?
+
+  // Follow-up
+  handoverNotes      String? @db.Text
+  receivingStaffName String?
+  patientOutcome     String?
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([originHospitalId])
+  @@index([destinationHospitalId])
+  @@index([status])
+  @@index([urgency])
+  @@index([requestedAt])
+  @@map("transfers")
+}
+
+// ============================================================================
+// EMERGENCY MANAGEMENT (Mass Casualty & Disasters)
+// ============================================================================
+
+model Emergency {
+  id              String @id @default(cuid())
+  emergencyNumber String @unique
+
+  type     EmergencyType
+  severity EmergencySeverity
+
+  countyId     String
+  county       County @relation(fields: [countyId], references: [id])
+  location     String
+  coordinates  Json?
+  affectedArea Float? // Square kilometers
+
+  description String  @db.Text
+  cause       String? // "ROAD_ACCIDENT", "BUILDING_COLLAPSE", etc.
+
+  // Casualties
+  estimatedCasualties Int?
+  confirmedCasualties Int  @default(0)
+  injuredCount        Int  @default(0)
+  criticalCount       Int  @default(0)
+  deaths              Int  @default(0)
+  minorInjuries       Int  @default(0)
+
+  // Status & Timeline
+  status         EmergencyStatus @default(REPORTED)
+  reportedAt     DateTime        @default(now())
+  reportedBy     String?
+  reporterPhone  String?
+  verifiedAt     DateTime?
+  respondedAt    DateTime?
+  underControlAt DateTime?
+  resolvedAt     DateTime?
+
+  // Command & Control
+  incidentCommander        String?
+  incidentCommanderPhone   String?
+  commandCenterLocation    String?
+  commandCenterCoordinates Json?
+
+  // Hospitals Involved
+  affectedHospitals        Hospital[]
+  primaryReceivingHospital String? // Hospital ID
+
+  // Resources Mobilized
+  ambulancesDispatched Int @default(0)
+  ambulancesOnScene    Int @default(0)
+  staffDeployed        Int @default(0)
+
+  // External Agencies
+  policeNotified      Boolean @default(false)
+  fireServiceNotified Boolean @default(false)
+  redCrossNotified    Boolean @default(false)
+  militaryInvolved    Boolean @default(false)
+
+  // Media & Communication
+  mediaAlertIssued   Boolean @default(false)
+  publicAnnouncement String? @db.Text
+
+  patients  Patient[]
+  responses EmergencyResponse[]
+  updates   Json[] // [{timestamp, update, updatedBy}]
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countyId])
+  @@index([type])
+  @@index([severity])
+  @@index([status])
+  @@index([reportedAt])
+  @@map("emergencies")
+}
+
+model EmergencyResponse {
+  id String @id @default(cuid())
+
+  emergencyId String
+  emergency   Emergency @relation(fields: [emergencyId], references: [id], onDelete: Cascade)
+
+  hospitalId String
+
+  // Resources Deployed
+  ambulanceId       String?
+  ambulance         Ambulance? @relation(fields: [ambulanceId], references: [id])
+  staffDeployed     Staff[]
+  equipmentDeployed Json[] // [{type, quantity, serialNumber}]
+  suppliesDeployed  Json[] // [{item, quantity}]
+
+  // Response Details
+  status       ResponseStatus @default(DISPATCHED)
+  dispatchedAt DateTime       @default(now())
+  arrivedAt    DateTime?
+  departedAt   DateTime?
+  completedAt  DateTime?
+
+  // Response Time
+  responseTime Int? // Minutes to arrive
+  sceneTime    Int? // Minutes on scene
+
+  // Outcome
+  patientsTriaged     Int   @default(0)
+  patientsTransported Int   @default(0)
+  patientsByPriority  Json? // {immediate: 5, urgent: 10, delayed: 15, minor: 20}
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([emergencyId])
+  @@index([hospitalId])
+  @@index([status])
+  @@map("emergency_responses")
+}
+
+// ============================================================================
+// SHA/SHIF INTEGRATION & FINANCIAL MANAGEMENT
+// ============================================================================
+
+model SHAClaim {
+  id          String @id @default(cuid())
+  claimNumber String @unique
+
+  hospitalId String
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id])
+  shaNumber String
+
+  triageEntryId String?      @unique
+  triageEntry   TriageEntry?
+
+  // Service Details
+  serviceDate    DateTime
+  serviceType    ServiceType
+  visitType      VisitType
+  diagnosis      String      @db.Text
+  icd10Codes     String[]
+  procedures     String[] // Procedure codes
+  medications    Json[] // [{name, quantity, unitCost, totalCost}]
+  labTests       Json[]
+  imagingStudies Json[]
+
+  // Itemized Costs
+  consultationFee Float @default(0)
+  procedureCost   Float @default(0)
+  medicationCost  Float @default(0)
+  labCost         Float @default(0)
+  imagingCost     Float @default(0)
+  bedCharges      Float @default(0)
+  otherCharges    Float @default(0)
+
+  // Financial Summary
+  totalAmount        Float
+  shaApprovedAmount  Float?
+  shaRejectedAmount  Float  @default(0)
+  patientCopay       Float  @default(0)
+  patientPaidAmount  Float  @default(0)
+  outstandingBalance Float  @default(0)
+
+  // SHA Processing
+  status            ClaimStatus @default(DRAFT)
+  submittedAt       DateTime?
+  submittedBy       String?
+  receivedBySHA     DateTime?
+  processingStarted DateTime?
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  paidAt            DateTime?
+
+  rejectionReason String? @db.Text
+  rejectionCode   String?
+
+  // Payment Details
+  paymentAmount    Float?
+  paymentReference String?
+  paymentDate      DateTime?
+  paymentMode      String? // "BANK_TRANSFER", "CHEQUE"
+
+  // Resubmission (if rejected)
+  resubmissionCount Int     @default(0)
+  originalClaimId   String?
+
+  // Audit
+  verifiedBy        String?
+  verificationDate  DateTime?
+  verificationNotes String?   @db.Text
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hospitalId])
+  @@index([patientId])
+  @@index([shaNumber])
+  @@index([status])
+  @@index([serviceDate])
+  @@index([submittedAt])
+  @@map("sha_claims")
+}
+
+// Financial Records (Track county disbursements & hospital revenue)
+model FinancialRecord {
+  id           String @id @default(cuid())
+  recordNumber String @unique
+
+  hospitalId String
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+
+  // Record Type
+  recordType FinancialRecordType
+  category   FinancialCategory
+
+  // Amount
+  amount   Float
+  currency String @default("KES")
+
+  // Source/Destination
+  source      String? // "COUNTY_GOVERNMENT", "SHA", "DONORS", "NHIF"
+  destination String?
+
+  // Description
+  description   String  @db.Text
+  fiscalYear    String // "2024/2025"
+  fiscalQuarter String? // "Q1", "Q2", etc.
+  month         String?
+
+  // Status
+  status          FinancialStatus @default(PENDING)
+  transactionDate DateTime
+  receivedDate    DateTime?
+  clearedDate     DateTime?
+
+  // Payment Details
+  paymentMode     String?
+  referenceNumber String?
+  voucherNumber   String?
+
+  // Approval
+  approvedBy   String?
+  approvalDate DateTime?
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hospitalId])
+  @@index([recordType])
+  @@index([category])
+  @@index([status])
+  @@index([transactionDate])
+  @@index([fiscalYear])
+  @@map("financial_records")
+}
+
+// ============================================================================
+// GOVERNANCE & ORGANIZATIONAL STRUCTURE
+// ============================================================================
+
+// National Level Coordination
+model NationalHealthCoordination {
+  id String @id @default(cuid())
+
+  // National Oversight
+  totalBeds        Int // Aggregate from all facilities
+  availableBeds    Int
+  icuBeds          Int
+  availableIcuBeds Int
+
+  // Emergency Status
+  nationalAlertLevel AlertLevel @default(NORMAL)
+  activeEmergencies  Int        @default(0)
+
+  // Resource Status
+  criticalShortages Json[] // [{resource, affectedCounties, severity}]
+
+  // SHA/SHIF Status
+  totalPendingClaims Int   @default(0)
+  totalClaimValue    Float @default(0)
+
+  lastUpdated DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("national_health_coordination")
+}
+
+model County {
+  id     String @id @default(cuid())
+  name   String
+  code   String @unique // "KE-01" to "KE-47"
+  region String // Nairobi, Central, Coast, Eastern, North Eastern, Nyanza, Rift Valley, Western
+
+  // Demographics
+  population Int
+  area       Float // Square kilometers
+  urbanRatio Float @default(0.28)
+
+  // Location
+  coordinates Json // {lat, lng, bounds}
+
+  // County Government
+  governorName         String?
+  healthCECName        String? // County Executive Committee Member for Health
+  countyHealthDirector String?
+  countyHQLocation     String
+
+  // Infrastructure
+  roadNetworkKm       Float?
+  electricityAccess   Float? // Percentage
+  internetPenetration Float?
+
+  // Health Indicators
+  doctorPopulationRatio String? // e.g., "1:20000"
+  nursePopulationRatio  String?
+  maternalMortalityRate Float?
+  infantMortalityRate   Float?
+
+  // Budget & Finance
+  annualHealthBudget     Float?
+  healthBudgetPercentage Float? // % of county budget
+
+  // Status
+  isMarginalized Boolean @default(false) // Receives equalization fund
+
+  // Relations
+  hospitals                Hospital[]
+  healthCenters            HealthCenter[]
+  dispensaries             Dispensary[]
+  communityHealthUnits     CommunityHealthUnit[]
+  communityHealthPromoters CommunityHealthPromoter[]
+  emergencies              Emergency[]
+  countyAmbulances         CountyAmbulance[]
+  dispatchCenters          DispatchCenter[]
+  telemedicineHubs         TelemedicineHub[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([region])
+  @@index([isMarginalized])
+  @@map("counties")
+}
+
+// Level 4-6 Hospitals (County, Regional, National Referral)
+model Hospital {
+  id      String  @id @default(cuid())
+  name    String
+  code    String  @unique // "KNH-001", "MTRH-001"
+  mflCode String? @unique // Master Facility List Code
+
+  // Classification
+  type      HospitalType
+  level     HospitalLevel
+  ownership Ownership
+
+  // Add this relation:
+  staffSchedules StaffSchedule[]
+
+  // Location
+  countyId     String
+  county       County  @relation(fields: [countyId], references: [id])
+  subCounty    String?
+  ward         String?
+  constituency String?
+  address      String
+  coordinates  Json // {lat, lng, accuracy}
+  what3words   String? // Precise location for ambulances
+  elevation    Float? // Meters above sea level
+
+  // Accessibility
+  accessibilityScore      Float   @default(50) // 0-100 (road quality, distance)
+  distanceToNearestTarmac Float? // Kilometers
+  reachableInRainySeason  Boolean @default(true)
+
+  // Contact
+  phone          String
+  emergencyPhone String
+  ambulancePhone String?
+  email          String
+  website        String?
+
+  // Capacity
+  totalBeds      Int
+  functionalBeds Int // Actually usable
+  icuBeds        Int
+  hdUnitBeds     Int
+  maternityBeds  Int
+  pediatricBeds  Int
+  emergencyBeds  Int
+  isolationBeds  Int // For infectious diseases
+
+  // Real-time Availability (Updated every 5 minutes)
+  availableBeds          Int
+  availableIcuBeds       Int
+  availableEmergencyBeds Int
+  lastBedUpdate          DateTime @default(now())
+
+  // Infrastructure Status
+  powerStatus    PowerStatus    @default(GRID)
+  backupPower    Boolean        @default(false)
+  waterStatus    WaterStatus    @default(AVAILABLE)
+  oxygenStatus   OxygenStatus   @default(AVAILABLE)
+  internetStatus InternetStatus @default(AVAILABLE)
+
+  // SHA/SHIF Integration
+  shaContracted     Boolean    @default(false)
+  shaFacilityCode   String?    @unique
+  shaActivationDate DateTime?
+  kephLevel         KEPHLevel? // Kenya Essential Package for Health
+
+  // Services & Capabilities
+  services         String[] // EMERGENCY, MATERNITY, SURGERY, ICU, etc.
+  specializations  String[] // CARDIOLOGY, NEUROLOGY, ONCOLOGY, etc.
+  has24HourService Boolean  @default(false)
+  hasAmbulance     Boolean  @default(false)
+  hasBloodBank     Boolean  @default(false)
+  hasLaboratory    Boolean  @default(false)
+  hasRadiology     Boolean  @default(false)
+  hasCTScan        Boolean  @default(false)
+  hasMRI           Boolean  @default(false)
+  hasDialysis      Boolean  @default(false)
+  hasPharmacy      Boolean  @default(false)
+  hasOxygenPlant   Boolean  @default(false)
+  hasMortuary      Boolean  @default(false)
+
+  // Telemedicine
+  telemedicineEnabled  Boolean @default(false)
+  canReceiveReferrals  Boolean @default(true)
+  canGiveConsultations Boolean @default(false)
+
+  // Status
+  isActive          Boolean           @default(true)
+  operationalStatus OperationalStatus @default(OPERATIONAL)
+  acceptingPatients Boolean           @default(true)
+  emergencyOnlyMode Boolean           @default(false)
+
+  // Devolution Management
+  managedByCounty Boolean       @default(true)
+  autonomyLevel   AutonomyLevel @default(SEMI_AUTONOMOUS)
+  hospitalBoard   String? // Hospital Management Board status
+
+  // Relations
+  departments                    Department[]
+  staff                          Staff[]
+  resources                      Resource[]
+  patients                       Patient[]
+  triageEntries                  TriageEntry[]
+  originTransfers                Transfer[]            @relation("TransferOrigin")
+  destinationTransfers           Transfer[]            @relation("TransferDestination")
+  originReferrals                Referral[]            @relation("ReferralOrigin")
+  destinationReferrals           Referral[]            @relation("ReferralDestination")
+  emergencies                    Emergency[]
+  ambulances                     Ambulance[]
+  shaClaims                      SHAClaim[]
+  supplyRequests                 SupplyRequest[]
+  procurements                   Procurement[]
+  financialRecords               FinancialRecord[]
+  performanceMetrics             PerformanceMetrics[]
+  requestingTelemedicineSessions TelemedicineSession[] @relation("TelemedicineRequesting")
+  providingTelemedicineSessions  TelemedicineSession[] @relation("TelemedicineProvider")
+
+  // Medical History Relations
+  treatments    Treatment[]
+  labTests      LabTest[]
+  diagnoses     Diagnosis[]
+  prescriptions Prescription[]
+  visits        Visit[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countyId])
+  @@index([type])
+  @@index([level])
+  @@index([isActive])
+  @@index([operationalStatus])
+  @@index([acceptingPatients])
+  @@index([shaContracted])
+  @@index([mflCode])
+  @@map("hospitals")
+}
+
+// Level 3 Health Centers
+model HealthCenter {
+  id      String            @id @default(cuid())
+  name    String
+  code    String            @unique
+  mflCode String?           @unique
+  level   HealthCenterLevel // Level 2 or 3
+
+  countyId    String
+  county      County  @relation(fields: [countyId], references: [id])
+  subCounty   String
+  ward        String
+  coordinates Json
+  what3words  String?
+  phone       String?
+
+  // Add this relation:
+  staffSchedules StaffSchedule[]
+
+  beds             Int     @default(0)
+  hasMaternity     Boolean @default(false)
+  hasLaboratory    Boolean @default(false)
+  hasMinorTheatre  Boolean @default(false)
+  has24HourService Boolean @default(false)
+
+  // Telemedicine
+  telemedicineEnabled Boolean @default(false)
+  canRefer            Boolean @default(true)
+
+  // SHA
+  shaContracted   Boolean @default(false)
+  shaFacilityCode String? @unique
+
+  isActive Boolean @default(true)
+
+  // Relations
+  referralsOriginated  Referral[]            @relation("HealthCenterOrigin")
+  referralsReceived    Referral[]            @relation("HealthCenterDestination")
+  staff                Staff[]
+  telemedicineSessions TelemedicineSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countyId])
+  @@index([level])
+  @@index([isActive])
+  @@map("health_centers")
+}
+
+// Level 1 Dispensaries
+model Dispensary {
+  id      String  @id @default(cuid())
+  name    String
+  code    String  @unique
+  mflCode String? @unique
+
+  countyId    String
+  county      County  @relation(fields: [countyId], references: [id])
+  ward        String
+  coordinates Json
+  what3words  String?
+
+  phone String?
+
+  hasPharmacy Boolean @default(true)
+  canRefer    Boolean @default(true)
+
+  // Add this relation:
+  staffSchedules StaffSchedule[]
+
+  // Telemedicine
+  telemedicineEnabled Boolean @default(false)
+
+  // SHA
+  shaContracted   Boolean @default(false)
+  shaFacilityCode String? @unique
+
+  isActive Boolean @default(true)
+
+  // Relations
+  referrals            Referral[]
+  staff                Staff[]
+  telemedicineSessions TelemedicineSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countyId])
+  @@index([isActive])
+  @@map("dispensaries")
+}
+
+// Community Health Units (CHUs) - Critical for rural access
+model CommunityHealthUnit {
+  id   String @id @default(cuid())
+  name String
+  code String @unique
+
+  countyId String
+  county   County  @relation(fields: [countyId], references: [id])
+  ward     String
+  village  String?
+
+  linkedFacility     String // Dispensary or Health Center
+  linkedFacilityType String // "DISPENSARY" or "HEALTH_CENTER"
+
+  householdsRegistered Int @default(0)
+  populationCovered    Int @default(0)
+
+  chps CommunityHealthPromoter[]
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countyId])
+  @@index([isActive])
+  @@map("community_health_units")
+}
+
+model Department {
+  id   String         @id @default(cuid())
+  name String
+  type DepartmentType
+
+  hospitalId String
+  hospital   Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+
+  // Head of Department
+  hodName  String?
+  hodPhone String?
+
+  // Add this relation:
+  staffSchedules StaffSchedule[]
+
+  // Capacity
+  totalBeds     Int
+  availableBeds Int
+  occupancyRate Float @default(0)
+
+  // Status
+  isActive            Boolean @default(true)
+  isAcceptingPatients Boolean @default(true)
+
+  // Relations
+  staff         Staff[]
+  resources     Resource[]
+  triageEntries TriageEntry[]
+
+  // Medical History Relations
+  treatments    Treatment[]
+  diagnoses     Diagnosis[]
+  prescriptions Prescription[]
+  visits        Visit[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hospitalId])
+  @@index([type])
+  @@index([isAcceptingPatients])
+  @@map("departments")
+}
+
+// ============================================================================
+// STAFF & USERS
+// ============================================================================
+
+model Staff {
+  id          String @id @default(cuid())
+  userId      String @unique
+  staffNumber String @unique
+
+  // Personal Info
+  firstName  String
+  lastName   String
+  email      String  @unique
+  phone      String
+  nationalId String? @unique
+
+  // Professional
+  role              StaffRole
+  specialization    String?
+  licenseNumber     String?
+  licensingBody     String?
+  yearsOfExperience Int?
+
+  // Assignment
+  facilityType   FacilityType
+  hospitalId     String?
+  hospital       Hospital?     @relation(fields: [hospitalId], references: [id])
+  healthCenterId String?
+  healthCenter   HealthCenter? @relation(fields: [healthCenterId], references: [id])
+  dispensaryId   String?
+  dispensary     Dispensary?   @relation(fields: [dispensaryId], references: [id])
+  departmentId   String?
+  department     Department?   @relation(fields: [departmentId], references: [id])
+
+  // Employment
+  employmentType EmploymentType
+  contractType   ContractType
+  hireDate       DateTime
+
+  // Salary & Payment
+  monthlySalary       Float?
+  lastPaidDate        DateTime?
+  pendingSalaryMonths Int       @default(0)
+
+  // Status
+  isActive   Boolean   @default(true)
+  isOnDuty   Boolean   @default(false)
+  shiftStart DateTime?
+  shiftEnd   DateTime?
+
+  // Add these relations:
+  schedules        StaffSchedule[] // Regular schedules
+  createdSchedules StaffSchedule[] @relation("ScheduleCreatedBy") // Schedules created by this staff
+
+  // Workload
+  currentCaseload Int @default(0)
+  maxCaseload     Int @default(10)
+
+  // Telemedicine
+  telemedicineEnabled        Boolean @default(false)
+  canGiveRemoteConsultations Boolean @default(false)
+
+  // Relations
+  triageEntries        TriageEntry[]
+  transfersInitiated   Transfer[]
+  emergencyResponses   EmergencyResponse[]
+  dispatchLogs         DispatchLog[]
+  telemedicineSessions TelemedicineSession[]
+
+  // Medical History Relations
+  treatments        Treatment[]
+  orderedLabTests   LabTest[]      @relation("LabOrderedBy")
+  processedLabTests LabTest[]      @relation("LabProcessedBy")
+  diagnoses         Diagnosis[]
+  prescriptions     Prescription[]
+  doctorVisits      Visit[]        @relation("VisitDoctor")
+  nurseVisits       Visit[]        @relation("VisitNurse")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hospitalId])
+  @@index([healthCenterId])
+  @@index([dispensaryId])
+  @@index([departmentId])
+  @@index([role])
+  @@index([isOnDuty])
+  @@index([isActive])
+  @@index([facilityType])
+  @@map("staff")
+}
+
+model StaffSchedule {
+  id             String @id @default(cuid())
+  scheduleNumber String @unique
+
+  // Staff relationship
+  staffId String
+  staff   Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  // Department relationship
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  // Schedule details
+  startTime DateTime
+  endTime   DateTime
+  shiftType ShiftType
+
+  // Location
+  facilityType   FacilityType
+  hospitalId     String?
+  hospital       Hospital?     @relation(fields: [hospitalId], references: [id])
+  healthCenterId String?
+  healthCenter   HealthCenter? @relation(fields: [healthCenterId], references: [id])
+  dispensaryId   String?
+  dispensary     Dispensary?   @relation(fields: [dispensaryId], references: [id])
+
+  // Schedule metadata
+  title       String? // Custom title for the shift
+  description String? @db.Text
+  notes       String? @db.Text
+
+  // Status
+  isActive    Boolean @default(true)
+  isConfirmed Boolean @default(true)
+
+  // Recurrence
+  isRecurring    Boolean   @default(false)
+  recurrenceRule String?
+  recurrenceEnd  DateTime?
+
+  // Override
+  isOverride         Boolean @default(false)
+  originalScheduleId String?
+
+  // Created by
+  createdById String?
+  createdBy   Staff?  @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([staffId])
+  @@index([departmentId])
+  @@index([hospitalId])
+  @@index([healthCenterId])
+  @@index([dispensaryId])
+  @@index([startTime])
+  @@index([endTime])
+  @@index([shiftType])
+  @@index([isActive])
+  @@index([isConfirmed])
+  @@index([facilityType])
+  @@map("staff_schedules")
+}
+
+enum ShiftType {
+  MORNING
+  EVENING
+  NIGHT
+  CUSTOM
+  ON_CALL
+  STAND_BY
+  EMERGENCY_COVER
+  WEEKEND
+  HOLIDAY
+}
+
+// Community Health Promoters
+model CommunityHealthPromoter {
+  id         String  @id @default(cuid())
+  firstName  String
+  lastName   String
+  phone      String
+  nationalId String? @unique
+
+  communityHealthUnitId String
+  communityHealthUnit   CommunityHealthUnit @relation(fields: [communityHealthUnitId], references: [id])
+
+  countyId String
+  county   County @relation(fields: [countyId], references: [id])
+
+  householdsAssigned Int @default(0)
+
+  // Training
+  trainingLevel     CHPTrainingLevel
+  certificationDate DateTime?
+
+  isActive Boolean @default(true)
+
+  referrals Referral[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([communityHealthUnitId])
+  @@index([countyId])
+  @@index([isActive])
+  @@map("community_health_promoters")
+}
+
+// ============================================================================
+// PATIENTS & TRIAGE
+// ============================================================================
+
+model Patient {
+  id            String @id @default(cuid())
+  patientNumber String @unique
+
+  // Identification
+  nationalId      String?  @unique
+  passportNumber  String?
+  birthCertNumber String?
+  firstName       String
+  lastName        String
+  otherNames      String?
+  dateOfBirth     DateTime
+  gender          Gender
+
+  // Contact
+  phone             String?
+  alternatePhone    String?
+  email             String?
+  countyOfResidence String?
+  subCounty         String?
+  ward              String?
+  village           String?
+  landmark          String?
+  what3words        String?
+
+  // Next of Kin
+  nextOfKinName     String?
+  nextOfKinPhone    String?
+  nextOfKinRelation String?
+
+  // Medical
+  bloodType         BloodType?
+  allergies         String[]
+  chronicConditions String[]
+  disabilities      String[]
+
+  // SHA/SHIF Insurance
+  shaNumber           String?            @unique
+  shaStatus           SHAStatus          @default(NOT_REGISTERED)
+  contributionStatus  ContributionStatus @default(UNKNOWN)
+  dependents          Json? // [{name, relation, dob}]
+  shaRegistrationDate DateTime?
+
+  // Financial
+  outstandingBills Float @default(0)
+  totalPaid        Float @default(0)
+
+  // Medical History Relations
+  treatments    Treatment[]
+  labTests      LabTest[]
+  diagnoses     Diagnosis[]
+  prescriptions Prescription[]
+  visits        Visit[]
+
+  // Current Status
+  currentHospitalId String?
+  currentHospital   Hospital?     @relation(fields: [currentHospitalId], references: [id])
+  currentStatus     PatientStatus @default(REGISTERED)
+
+  // Relations
+  triageEntries        TriageEntry[]
+  transfers            Transfer[]
+  referrals            Referral[]
+  emergencies          Emergency[]
+  shaClaims            SHAClaim[]
+  telemedicineSessions TelemedicineSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([nationalId])
+  @@index([shaNumber])
+  @@index([currentHospitalId])
+  @@index([currentStatus])
+  @@index([phone])
+  @@map("patients")
+}
+
+model TriageEntry {
+  id           String @id @default(cuid())
+  triageNumber String @unique
+
+  // Patient & Location
+  patientId    String
+  patient      Patient    @relation(fields: [patientId], references: [id])
+  hospitalId   String
+  hospital     Hospital   @relation(fields: [hospitalId], references: [id])
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  // Arrival
+  arrivalMode    ArrivalMode
+  ambulanceId    String?
+  referredFrom   String?
+  referralLetter Boolean     @default(false)
+
+  // Triage Assessment
+  chiefComplaint String      @db.Text
+  vitalSigns     Json // {bp: "120/80", pulse: 78, temp: 37.2, respRate: 18, o2Sat: 98, gcs: 15, avpu: "A"}
+  triageLevel    TriageLevel
+  painScale      Int?        @db.SmallInt
+
+  // ESI Triage (Emergency Severity Index 1-5)
+  esiLevel                      Int     @db.SmallInt
+  requiresResuscitation         Boolean @default(false)
+  requiresImmediateIntervention Boolean @default(false)
+
+  // Assessment
+  assessedById       String
+  assessedBy         Staff    @relation(fields: [assessedById], references: [id])
+  assessmentNotes    String   @db.Text
+  presentingSymptoms String[]
+
+  // Time Tracking
+  arrivalTime        DateTime  @default(now())
+  triageTime         DateTime  @default(now())
+  waitingStartTime   DateTime?
+  treatmentStartTime DateTime?
+  doctorSeenTime     DateTime?
+  dischargeTime      DateTime?
+
+  totalWaitTime      Int? // minutes
+  totalTreatmentTime Int?
+
+  // Queue Management
+  status        TriageStatus @default(WAITING)
+  queuePosition Int?
+  priorityScore Float? // Calculated based on severity + wait time
+
+  // Outcomes
+  disposition           Disposition?
+  admittedToDepartment  String?
+  diagnosis             String?      @db.Text
+  icd10Codes            String[] // International Classification of Diseases codes
+  treatmentGiven        String?      @db.Text
+  medicationsPrescribed Json[]
+
+  transferId String?   @unique
+  transfer   Transfer? @relation(fields: [transferId], references: [id])
+
+  // SHA Claims
+  shaClaimId String?   @unique
+  shaClaim   SHAClaim? @relation(fields: [shaClaimId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([hospitalId])
+  @@index([departmentId])
+  @@index([triageLevel])
+  @@index([esiLevel])
+  @@index([status])
+  @@index([arrivalTime])
+  @@index([arrivalMode])
+  @@index([disposition])
+  @@map("triage_entries")
+}
+
+// ============================================================================
+// REFERRAL SYSTEM (6 Levels of Care)
+// ============================================================================
+
+model Referral {
+  id             String @id @default(cuid())
+  referralNumber String @unique
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  // Origin
+  originType           ReferralOriginType
+  originDispensaryId   String?
+  originDispensary     Dispensary?        @relation(fields: [originDispensaryId], references: [id])
+  originHealthCenterId String?
+  originHealthCenter   HealthCenter?      @relation("HealthCenterOrigin", fields: [originHealthCenterId], references: [id])
+  originHospitalId     String?
+  originHospital       Hospital?          @relation("ReferralOrigin", fields: [originHospitalId], references: [id])
+
+  // Destination
+  destinationHealthCenterId String?
+  destinationHealthCenter   HealthCenter? @relation("HealthCenterDestination", fields: [destinationHealthCenterId], references: [id])
+  destinationHospitalId     String?
+  destinationHospital       Hospital?     @relation("ReferralDestination", fields: [destinationHospitalId], references: [id])
+
+  // Referral Details
+  reason            String  @db.Text
+  clinicalNotes     String  @db.Text
+  diagnosisProvided String? @db.Text
+  treatmentGiven    String? @db.Text
+  vitalSigns        Json?
+  labResults        Json?
+
+  urgency          ReferralUrgency
+  requiredServices String[] // ["ICU", "SURGERY", "DIALYSIS"]
+
+  // Referred By
+  referredByCHPId         String?
+  referredByCHP           CommunityHealthPromoter? @relation(fields: [referredByCHPId], references: [id])
+  referringOfficerName    String?
+  referringOfficerPhone   String?
+  referringOfficerLicense String?
+
+  // Patient Transport
+  transportArranged Boolean @default(false)
+  transportMode     String?
+  escortProvided    Boolean @default(false)
+
+  // Response
+  status         ReferralStatus @default(PENDING)
+  acceptedBy     String? // Name of receiving facility officer
+  acceptedAt     DateTime?
+  rejectedReason String?        @db.Text
+
+  referredAt DateTime  @default(now())
+  arrivedAt  DateTime?
+
+  // Follow-up
+  feedbackGiven Boolean @default(false)
+  outcome       String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([originType])
+  @@index([status])
+  @@index([urgency])
+  @@index([referredAt])
+  @@map("referrals")
+}
+
+// ============================================================================
+// TELEMEDICINE & DIGITAL HEALTH
+// ============================================================================
+
+model TelemedicineHub {
+  id   String @id @default(cuid())
+  name String
+  code String @unique
+
+  countyId String
+  county   County @relation(fields: [countyId], references: [id])
+
+  // Location (usually at county referral hospital)
+  baseHospitalId String?
+  coordinates    Json
+
+  // Infrastructure
+  internetSpeed   Float? // Mbps
+  powerBackup     Boolean @default(false)
+  equipmentStatus Json // {cameras, displays, audio, network}
+
+  // Specialists Available
+  specialists Json[] // [{name, specialization, availability}]
+
+  // Served Facilities
+  linkedFacilities String[] // Facility codes
+
+  isActive Boolean @default(true)
+
+  sessions TelemedicineSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countyId])
+  @@index([isActive])
+  @@map("telemedicine_hubs")
+}
+
+model TelemedicineSession {
+  id            String @id @default(cuid())
+  sessionNumber String @unique
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  // Requesting Facility (lower level)
+  requestingFacilityType   FacilityType
+  requestingDispensaryId   String?
+  requestingDispensary     Dispensary?   @relation(fields: [requestingDispensaryId], references: [id])
+  requestingHealthCenterId String?
+  requestingHealthCenter   HealthCenter? @relation(fields: [requestingHealthCenterId], references: [id])
+  requestingHospitalId     String?
+  requestingHospital       Hospital?     @relation("TelemedicineRequesting", fields: [requestingHospitalId], references: [id])
+
+  // Providing Facility (specialist/higher level)
+  providerHospitalId String
+  providerHospital   Hospital @relation("TelemedicineProvider", fields: [providerHospitalId], references: [id])
+
+  // Telemedicine Hub
+  telemedicineHubId String?
+  telemedicineHub   TelemedicineHub? @relation(fields: [telemedicineHubId], references: [id])
+
+  // Consultation
+  specialistId      String
+  specialist        Staff            @relation(fields: [specialistId], references: [id])
+  consultationType  ConsultationType
+  chiefComplaint    String           @db.Text
+  presentingHistory String           @db.Text
+  vitalSigns        Json?
+
+  // Session Details
+  scheduledTime DateTime?
+  startTime     DateTime?
+  endTime       DateTime?
+  duration      Int? // minutes
+
+  // Diagnosis & Recommendations
+  diagnosis             String? @db.Text
+  recommendations       String  @db.Text
+  prescriptions         Json[]
+  requiresInPersonVisit Boolean @default(false)
+  requiresReferral      Boolean @default(false)
+
+  // Media
+  imagesShared    String[] // URLs to medical images
+  documentsShared String[]
+
+  // Quality
+  connectionQuality ConnectionQuality?
+  audioQuality      Int?               @db.SmallInt // 1-5
+  videoQuality      Int?               @db.SmallInt
+
+  // Status
+  status TelemedicineStatus @default(SCHEDULED)
+
+  // SHA Billing
+  shaReimbursable Boolean @default(true)
+  consultationFee Float?
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([requestingFacilityType])
+  @@index([providerHospitalId])
+  @@index([specialistId])
+  @@index([status])
+  @@index([scheduledTime])
+  @@map("telemedicine_sessions")
+}
