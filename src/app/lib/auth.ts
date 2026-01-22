@@ -1,6 +1,8 @@
 // src/app/lib/auth.ts
 
 import { jwtVerify, SignJWT } from 'jose'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 
 export interface User {
   id: string
@@ -261,4 +263,64 @@ export function ensureBasicPermissions(user: any): User {
   }
   
   return user as User
+}
+
+// NEW: Get current user from cookies/session
+export async function getCurrentUser(): Promise<User | null> {
+  try {
+    console.log('🔍 Getting current user from session...')
+    
+    // Get the auth cookie - NOTE: cookies() returns a Promise
+    const cookieStore = await cookies()
+    const token = cookieStore.get('auth-token')?.value
+    
+    if (!token) {
+      console.log('❌ No auth token found')
+      return null
+    }
+    
+    // Verify the token
+    const payload = await verifyToken(token)
+    if (!payload) {
+      console.log('❌ Invalid token')
+      return null
+    }
+    
+    console.log('✅ Token verified, payload:', payload)
+    
+    // Create user object from payload
+    const user = createUserObject(payload)
+    
+    // Ensure basic permissions
+    return ensureBasicPermissions(user)
+    
+  } catch (error) {
+    console.error('❌ Error getting current user:', error)
+    return null
+  }
+}
+
+// NEW: Check if user is authenticated and redirect if not
+export async function requireAuth(redirectTo: string = '/login'): Promise<User> {
+  const user = await getCurrentUser()
+  
+  if (!user) {
+    console.log(`🚫 No user found, redirecting to ${redirectTo}`)
+    redirect(redirectTo)
+  }
+  
+  return user
+}
+
+// NEW: Mock user for development/testing (remove in production)
+export function getMockUser(): User {
+  return {
+    id: '1',
+    email: 'doctor@example.com',
+    name: 'Dr. John Smith',
+    role: 'DOCTOR',
+    facilityId: 'hospital-1',
+    countyId: 'county-1',
+    permissions: getPermissionsForRole('DOCTOR')
+  }
 }
