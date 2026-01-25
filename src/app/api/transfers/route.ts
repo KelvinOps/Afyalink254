@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { z } from 'zod';
-import prisma from '@/app/lib/prisma';
-import { authOptions } from '@/app/lib/auth';
-import { auditLog, AuditAction } from '@/app/lib/audit';
+import { prisma } from '@/app/lib/prisma';
+import { authOptions } from '@/app/lib/auth-options';
+import { auditLog } from '@/app/lib/audit';
+import { createUserObject, hasPermission } from '@/app/lib/auth';
 
-// Validation schemas
+// Updated validation schema with all required fields from Prisma schema
 const createTransferSchema = z.object({
   patientId: z.string().min(1, 'Patient ID is required'),
   originHospitalId: z.string().min(1, 'Origin hospital is required'),
@@ -14,11 +15,15 @@ const createTransferSchema = z.object({
   urgency: z.enum(['IMMEDIATE', 'URGENT', 'SCHEDULED', 'ROUTINE']),
   diagnosis: z.string().min(1, 'Diagnosis is required'),
   icd10Codes: z.array(z.string()).optional().default([]),
-  vitalSigns: z.record(z.any()),
+  vitalSigns: z.record(z.any()).optional().default({}),
+  consciousness: z.string().default('AVPU'),
+  originDepartment: z.string().default('EMERGENCY'),
+  destinationDepartment: z.string().default('EMERGENCY'),
+  allergies: z.array(z.string()).optional().default([]),
   transportMode: z.enum(['AMBULANCE', 'AIR_AMBULANCE', 'PRIVATE_VEHICLE', 'INTER_FACILITY_TRANSPORT', 'PUBLIC_TRANSPORT']),
   requiredResources: z.array(z.string()).optional().default([]),
-  specialNeeds: z.string().optional(),
-  estimatedCost: z.number().optional(),
+  specialNeeds: z.string().optional().default(''),
+  estimatedCost: z.number().optional().nullable(),
 });
 
 export async function GET(request: NextRequest) {
@@ -28,6 +33,9 @@ export async function GET(request: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Create user object with proper permissions
+    const user = createUserObject(session.user);
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
@@ -51,15 +59,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Hospital admins can only see transfers from their hospital
-    if (session.user.role === 'HOSPITAL_ADMIN' && session.user.facilityId) {
+    if (user.role === 'HOSPITAL_ADMIN' && user.facilityId) {
       if (direction === 'incoming') {
-        where.destinationHospitalId = session.user.facilityId;
+        where.destinationHospitalId = user.facilityId;
       } else if (direction === 'outgoing') {
-        where.originHospitalId = session.user.facilityId;
+        where.originHospitalId = user.facilityId;
       } else {
         where.OR = [
-          { originHospitalId: session.user.facilityId },
-          { destinationHospitalId: session.user.facilityId }
+          { originHospitalId: user.facilityId },
+          { destinationHospitalId: user.facilityId }
         ];
       }
     }
@@ -140,9 +148,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Create user object with proper permissions
+    const user = createUserObject(session.user);
+
     // Check permission using your auth system
-    const { hasPermission } = await import('@/app/lib/auth');
-    if (!hasPermission(session.user, 'transfers.write')) {
+    if (!hasPermission(user, 'transfers.write')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -161,7 +171,13 @@ export async function POST(request: NextRequest) {
     // Verify patient exists and is at origin hospital
     const patient = await prisma.patient.findUnique({
       where: { id: data.patientId },
-      include: { currentHospital: true },
+      include: { 
+        currentHospital: true,
+        triageEntries: {
+          orderBy: { arrivalTime: 'desc' },
+          take: 1
+        }
+      },
     });
 
     if (!patient) {
@@ -177,8 +193,14 @@ export async function POST(request: NextRequest) {
 
     // Verify hospitals exist
     const [originHospital, destinationHospital] = await Promise.all([
-      prisma.hospital.findUnique({ where: { id: data.originHospitalId } }),
-      prisma.hospital.findUnique({ where: { id: data.destinationHospitalId } }),
+      prisma.hospital.findUnique({ 
+        where: { id: data.originHospitalId },
+        select: { id: true, name: true, code: true }
+      }),
+      prisma.hospital.findUnique({ 
+        where: { id: data.destinationHospitalId },
+        select: { id: true, name: true, code: true }
+      }),
     ]);
 
     if (!originHospital || !destinationHospital) {
@@ -197,13 +219,86 @@ export async function POST(request: NextRequest) {
 
     const transferNumber = `TRF-${new Date().getFullYear()}-${(transferCount + 1).toString().padStart(6, '0')}`;
 
+    // Create transfer with all required fields
     const transfer = await prisma.transfer.create({
       data: {
-        ...data,
         transferNumber,
-        initiatedById: session.user.id,
+        patientId: data.patientId,
+        triageEntryId: patient.triageEntries[0]?.id || null,
+        
+        // Origin information
+        originHospitalId: data.originHospitalId,
+        originDepartment: data.originDepartment,
+        originContactName: user.name,
+        originContactPhone: '',
+        
+        // Destination information
+        destinationHospitalId: data.destinationHospitalId,
+        destinationDepartment: data.destinationDepartment,
+        acceptedByName: null,
+        acceptedByPhone: null,
+        bedReserved: false,
+        bedNumber: null,
+        
+        // Medical information
+        reason: data.reason,
+        diagnosis: data.diagnosis,
+        icd10Codes: data.icd10Codes,
+        vitalSigns: data.vitalSigns,
+        consciousness: data.consciousness,
+        oxygenRequired: false,
+        oxygenRate: null,
+        ivFluids: false,
+        medications: [],
+        allergies: data.allergies,
+        specialNeeds: data.specialNeeds,
+        
+        // Transfer details
+        urgency: data.urgency,
+        requiredResources: data.requiredResources,
+        requiredSpecialist: '',
+        
+        // Transport
+        transportMode: data.transportMode,
+        ambulanceId: null,
+        escortingStaff: null,
+        transferDocuments: [],
+        
+        // Distance & route
+        estimatedDistance: null,
+        estimatedDuration: null,
+        routeConditions: null,
+        
+        // Financial
+        estimatedCost: data.estimatedCost,
+        shaCovered: false,
+        shaPreAuthorization: null,
+        patientPayment: null,
+        
+        // Status
         status: 'REQUESTED',
         requestedAt: new Date(),
+        initiatedById: user.id,
+        
+        // Timeline (will be set later)
+        approvedAt: null,
+        rejectedAt: null,
+        rejectionReason: null,
+        departureTime: null,
+        arrivalTime: null,
+        completedAt: null,
+        cancelledAt: null,
+        cancellationReason: null,
+        
+        // Personnel
+        approvedById: null,
+        
+        // Follow-up
+        handoverNotes: null,
+        receivingStaffName: null,
+        patientOutcome: null,
+        
+        notes: null,
       },
       include: {
         patient: {
@@ -231,17 +326,26 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Create audit log using your audit system
+    // Update patient's current status
+    await prisma.patient.update({
+      where: { id: data.patientId },
+      data: { 
+        currentStatus: 'IN_TRANSFER'
+      }
+    });
+
+    // Create audit log
     await auditLog({
-      action: AuditAction.CREATE,
+      action: 'CREATE',
       entityType: 'TRANSFER',
       entityId: transfer.id,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Created transfer request ${transferNumber} for patient ${transfer.patient.firstName} ${transfer.patient.lastName}`,
       changes: data,
-      facilityId: session.user.facilityId,
+      facilityId: user.facilityId,
+      success: true
     });
 
     return NextResponse.json(transfer, { status: 201 });

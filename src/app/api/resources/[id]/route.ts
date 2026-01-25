@@ -1,3 +1,4 @@
+// src/app/api/resources/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/app/lib/prisma'
@@ -12,7 +13,7 @@ interface RouteParams {
 // GET /api/resources/[id] - Get specific resource
 export async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: { id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -113,7 +114,7 @@ export async function GET(
 // PATCH /api/resources/[id] - Update resource
 export async function PATCH(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: { id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -210,7 +211,7 @@ export async function PATCH(
 // DELETE /api/resources/[id] - Delete resource
 export async function DELETE(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: { id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions)

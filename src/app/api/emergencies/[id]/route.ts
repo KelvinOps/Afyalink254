@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { z } from 'zod';
 import { prisma } from '@/app/lib/prisma';
-import { authOptions } from '@/app/lib/auth';
-import { auditLog, AuditAction } from '@/app/lib/audit'; // Fixed import
-import { hasPermission, canAccessModule } from '@/app/lib/auth'; // Added canAccessModule
+import { authOptions } from '@/app/lib/auth-options';
+import { auditLog } from '@/app/lib/audit';
+import { createUserObject, hasPermission, canAccessModule } from '@/app/lib/auth';
+import { Prisma } from '@prisma/client';
 
 const updateEmergencySchema = z.object({
   type: z.enum(['MEDICAL', 'TRAUMA', 'OBSTETRIC', 'PEDIATRIC', 'CARDIAC', 'STROKE', 'RESPIRATORY', 'MASS_CASUALTY', 'NATURAL_DISASTER', 'TRAFFIC_ACCIDENT', 'FIRE', 'DROWNING', 'POISONING', 'ASSAULT', 'OTHER']).optional(),
@@ -50,11 +51,13 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has permission to access emergencies module
-    if (!canAccessModule(session.user, 'emergencies')) {
+    const user = createUserObject(session.user);
+
+    if (!canAccessModule(user, 'emergencies')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
+    // Fetch emergency without the invalid hospital include
     const emergency = await prisma.emergency.findUnique({
       where: { id: params.id },
       include: {
@@ -86,14 +89,8 @@ export async function GET(
                 role: true,
                 specialization: true
               }
-            },
-            hospital: {
-              select: {
-                id: true,
-                name: true,
-                level: true
-              }
             }
+            // Removed hospital include since it's not a relation in the schema
           }
         },
         patients: {
@@ -123,48 +120,72 @@ export async function GET(
     }
 
     // Check access permissions based on role and county
-    if (session.user.role === 'COUNTY_ADMIN' && emergency.countyId !== session.user.countyId) {
+    if (user.role === 'COUNTY_ADMIN' && emergency.countyId !== user.countyId) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    if (session.user.role === 'HOSPITAL_ADMIN') {
+    if (user.role === 'HOSPITAL_ADMIN') {
       const hospital = await prisma.hospital.findUnique({
-        where: { id: session.user.facilityId }
+        where: { id: user.facilityId }
       });
       if (hospital?.countyId !== emergency.countyId) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
     }
 
-    // Log the view action for sensitive emergency data
+    // If you need hospital data for responses, fetch it separately
+    const responsesWithHospitalData = await Promise.all(
+      emergency.responses.map(async (response) => {
+        const hospital = await prisma.hospital.findUnique({
+          where: { id: response.hospitalId },
+          select: {
+            id: true,
+            name: true,
+            level: true
+          }
+        });
+        
+        return {
+          ...response,
+          hospital: hospital || null
+        };
+      })
+    );
+
+    // Create a new emergency object with enhanced responses
+    const emergencyWithHospitalData = {
+      ...emergency,
+      responses: responsesWithHospitalData
+    };
+
     await auditLog({
-      action: AuditAction.READ,
+      action: 'READ',
       entityType: 'EMERGENCY',
       entityId: emergency.id,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Viewed emergency ${emergency.emergencyNumber}`,
-      facilityId: session.user.facilityId,
+      facilityId: user.facilityId,
       success: true
     });
 
-    return NextResponse.json(emergency);
+    return NextResponse.json(emergencyWithHospitalData);
   } catch (error) {
     console.error('Error fetching emergency:', error);
     
-    // Log failed access attempt
     const session = await getServerSession(authOptions);
     if (session?.user) {
+      const user = createUserObject(session.user);
       await auditLog({
-        action: AuditAction.READ,
+        action: 'READ',
         entityType: 'EMERGENCY',
         entityId: params.id,
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name,
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name,
         description: `Failed to view emergency ${params.id}`,
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
         success: false,
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -188,8 +209,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check permissions - only users with emergencies.write can update emergencies
-    if (!hasPermission(session.user, 'emergencies.write')) {
+    const user = createUserObject(session.user);
+
+    if (!hasPermission(user, 'emergencies.write')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
@@ -205,7 +227,6 @@ export async function PATCH(
 
     const data = validation.data;
 
-    // Check if emergency exists and user has access
     const existingEmergency = await prisma.emergency.findUnique({
       where: { id: params.id }
     });
@@ -215,33 +236,132 @@ export async function PATCH(
     }
 
     // Verify access permissions based on role and county
-    if (session.user.role === 'COUNTY_ADMIN' && existingEmergency.countyId !== session.user.countyId) {
+    if (user.role === 'COUNTY_ADMIN' && existingEmergency.countyId !== user.countyId) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    if (session.user.role === 'HOSPITAL_ADMIN') {
+    if (user.role === 'HOSPITAL_ADMIN') {
       const hospital = await prisma.hospital.findUnique({
-        where: { id: session.user.facilityId }
+        where: { id: user.facilityId }
       });
       if (hospital?.countyId !== existingEmergency.countyId) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
     }
 
-    const updateData: any = { ...data };
+    // Build update data properly
+    const updateData: any = {};
     
-    // Handle coordinate updates
-    if (data.coordinates) {
-      updateData.coordinates = JSON.stringify(data.coordinates);
+    // Track changed fields manually
+    const changedFields: string[] = [];
+    
+    // Handle optional fields
+    if (data.type !== undefined) { 
+      updateData.type = data.type; 
+      changedFields.push('type');
+    }
+    if (data.severity !== undefined) { 
+      updateData.severity = data.severity; 
+      changedFields.push('severity');
+    }
+    if (data.location !== undefined) { 
+      updateData.location = data.location; 
+      changedFields.push('location');
+    }
+    if (data.description !== undefined) { 
+      updateData.description = data.description; 
+      changedFields.push('description');
+    }
+    if (data.cause !== undefined) { 
+      updateData.cause = data.cause; 
+      changedFields.push('cause');
+    }
+    if (data.estimatedCasualties !== undefined) { 
+      updateData.estimatedCasualties = data.estimatedCasualties; 
+      changedFields.push('estimatedCasualties');
+    }
+    if (data.confirmedCasualties !== undefined) { 
+      updateData.confirmedCasualties = data.confirmedCasualties; 
+      changedFields.push('confirmedCasualties');
+    }
+    if (data.injuredCount !== undefined) { 
+      updateData.injuredCount = data.injuredCount; 
+      changedFields.push('injuredCount');
+    }
+    if (data.criticalCount !== undefined) { 
+      updateData.criticalCount = data.criticalCount; 
+      changedFields.push('criticalCount');
+    }
+    if (data.deaths !== undefined) { 
+      updateData.deaths = data.deaths; 
+      changedFields.push('deaths');
+    }
+    if (data.minorInjuries !== undefined) { 
+      updateData.minorInjuries = data.minorInjuries; 
+      changedFields.push('minorInjuries');
+    }
+    if (data.incidentCommander !== undefined) { 
+      updateData.incidentCommander = data.incidentCommander; 
+      changedFields.push('incidentCommander');
+    }
+    if (data.incidentCommanderPhone !== undefined) { 
+      updateData.incidentCommanderPhone = data.incidentCommanderPhone; 
+      changedFields.push('incidentCommanderPhone');
+    }
+    if (data.commandCenterLocation !== undefined) { 
+      updateData.commandCenterLocation = data.commandCenterLocation; 
+      changedFields.push('commandCenterLocation');
+    }
+    if (data.policeNotified !== undefined) { 
+      updateData.policeNotified = data.policeNotified; 
+      changedFields.push('policeNotified');
+    }
+    if (data.fireServiceNotified !== undefined) { 
+      updateData.fireServiceNotified = data.fireServiceNotified; 
+      changedFields.push('fireServiceNotified');
+    }
+    if (data.redCrossNotified !== undefined) { 
+      updateData.redCrossNotified = data.redCrossNotified; 
+      changedFields.push('redCrossNotified');
+    }
+    if (data.militaryInvolved !== undefined) { 
+      updateData.militaryInvolved = data.militaryInvolved; 
+      changedFields.push('militaryInvolved');
+    }
+    if (data.mediaAlertIssued !== undefined) { 
+      updateData.mediaAlertIssued = data.mediaAlertIssued; 
+      changedFields.push('mediaAlertIssued');
+    }
+    if (data.publicAnnouncement !== undefined) { 
+      updateData.publicAnnouncement = data.publicAnnouncement; 
+      changedFields.push('publicAnnouncement');
     }
     
-    if (data.commandCenterCoordinates) {
-      updateData.commandCenterCoordinates = JSON.stringify(data.commandCenterCoordinates);
+    // Handle coordinate updates properly
+    if (data.coordinates !== undefined) {
+      updateData.coordinates = data.coordinates ? data.coordinates : Prisma.JsonNull;
+      changedFields.push('coordinates');
+    }
+    
+    if (data.commandCenterCoordinates !== undefined) {
+      updateData.commandCenterCoordinates = data.commandCenterCoordinates ? data.commandCenterCoordinates : Prisma.JsonNull;
+      changedFields.push('commandCenterCoordinates');
     }
 
     // Handle status transitions
-    if (data.status === 'RESOLVED' && !data.resolvedAt) {
-      updateData.resolvedAt = new Date().toISOString();
+    let statusChanged = false;
+    if (data.status !== undefined) {
+      updateData.status = data.status;
+      changedFields.push('status');
+      statusChanged = true;
+      
+      if (data.status === 'RESOLVED' && !data.resolvedAt) {
+        updateData.resolvedAt = new Date().toISOString();
+        changedFields.push('resolvedAt');
+      } else if (data.resolvedAt !== undefined) {
+        updateData.resolvedAt = data.resolvedAt;
+        changedFields.push('resolvedAt');
+      }
     }
 
     const emergency = await prisma.emergency.update({
@@ -259,12 +379,12 @@ export async function PATCH(
 
     // Log the action with detailed changes
     await auditLog({
-      action: AuditAction.UPDATE,
+      action: 'UPDATE',
       entityType: 'EMERGENCY',
       entityId: emergency.id,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Updated emergency ${emergency.emergencyNumber}`,
       changes: {
         previous: {
@@ -277,9 +397,9 @@ export async function PATCH(
           severity: emergency.severity,
           location: emergency.location
         },
-        updatedFields: Object.keys(data)
+        updatedFields: changedFields
       },
-      facilityId: session.user.facilityId,
+      facilityId: user.facilityId,
       success: true
     });
 
@@ -287,18 +407,18 @@ export async function PATCH(
   } catch (error) {
     console.error('Error updating emergency:', error);
     
-    // Log failed update attempt
     const session = await getServerSession(authOptions);
     if (session?.user) {
+      const user = createUserObject(session.user);
       await auditLog({
-        action: AuditAction.UPDATE,
+        action: 'UPDATE',
         entityType: 'EMERGENCY',
         entityId: params.id,
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name,
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name,
         description: `Failed to update emergency ${params.id}`,
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
         success: false,
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -322,8 +442,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Only SUPER_ADMIN can delete emergencies
-    if (session.user.role !== 'SUPER_ADMIN') {
+    const user = createUserObject(session.user);
+
+    if (user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
@@ -335,7 +456,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Emergency not found' }, { status: 404 });
     }
 
-    // Instead of deleting, archive the emergency
     const archivedEmergency = await prisma.emergency.update({
       where: { id: params.id },
       data: {
@@ -346,19 +466,19 @@ export async function DELETE(
 
     // Log the action
     await auditLog({
-      action: AuditAction.DELETE,
+      action: 'DELETE',
       entityType: 'EMERGENCY',
       entityId: archivedEmergency.id,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Archived emergency ${archivedEmergency.emergencyNumber}`,
       changes: {
         previousStatus: emergency.status,
         newStatus: 'ARCHIVED',
         archivedAt: new Date().toISOString()
       },
-      facilityId: session.user.facilityId,
+      facilityId: user.facilityId,
       success: true
     });
 
@@ -366,18 +486,18 @@ export async function DELETE(
   } catch (error) {
     console.error('Error archiving emergency:', error);
     
-    // Log failed archive attempt
     const session = await getServerSession(authOptions);
     if (session?.user) {
+      const user = createUserObject(session.user);
       await auditLog({
-        action: AuditAction.DELETE,
+        action: 'DELETE',
         entityType: 'EMERGENCY',
         entityId: params.id,
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name,
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name,
         description: `Failed to archive emergency ${params.id}`,
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
         success: false,
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });

@@ -1,14 +1,12 @@
-// app/api/emergencies/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { z } from 'zod';
 import { prisma } from '@/app/lib/prisma';
-import { authOptions } from '@/app/lib/auth';
+import { authOptions } from '@/app/lib/auth-options';
 import { auditLog } from '@/app/lib/audit';
-import { hasPermission, canAccessModule, createUserObject, User } from '@/app/lib/auth';
+import { createUserObject, hasPermission, canAccessModule } from '@/app/lib/auth';
 import { Prisma } from '@prisma/client';
 
-// Updated schema to match your frontend form data
 const createEmergencySchema = z.object({
   type: z.enum(['MEDICAL', 'TRAUMA', 'OBSTETRIC', 'PEDIATRIC', 'CARDIAC', 'STROKE', 'RESPIRATORY', 'MASS_CASUALTY', 'NATURAL_DISASTER', 'TRAFFIC_ACCIDENT', 'FIRE', 'DROWNING', 'POISONING', 'ASSAULT', 'OTHER']),
   severity: z.enum(['MINOR', 'MODERATE', 'SEVERE', 'MAJOR', 'CATASTROPHIC']),
@@ -25,7 +23,22 @@ const createEmergencySchema = z.object({
   reporterPhone: z.string().optional()
 });
 
-const updateEmergencySchema = createEmergencySchema.partial();
+const updateEmergencySchema = z.object({
+  type: z.enum(['MEDICAL', 'TRAUMA', 'OBSTETRIC', 'PEDIATRIC', 'CARDIAC', 'STROKE', 'RESPIRATORY', 'MASS_CASUALTY', 'NATURAL_DISASTER', 'TRAFFIC_ACCIDENT', 'FIRE', 'DROWNING', 'POISONING', 'ASSAULT', 'OTHER']).optional(),
+  severity: z.enum(['MINOR', 'MODERATE', 'SEVERE', 'MAJOR', 'CATASTROPHIC']).optional(),
+  countyId: z.string().cuid().optional(),
+  location: z.string().min(1).optional(),
+  coordinates: z.object({
+    lat: z.number(),
+    lng: z.number()
+  }).optional(),
+  description: z.string().min(1).optional(),
+  cause: z.string().optional(),
+  estimatedCasualties: z.number().int().positive().optional(),
+  reportedBy: z.string().optional(),
+  reporterPhone: z.string().optional(),
+  status: z.enum(['REPORTED', 'CONFIRMED', 'RESPONDING', 'ON_SCENE', 'UNDER_CONTROL', 'RESOLVED', 'ARCHIVED']).optional() // Added status field
+});
 
 // GET /api/emergencies - List emergencies with filtering
 export async function GET(request: NextRequest) {
@@ -35,10 +48,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Create proper user object with permissions
     const user = createUserObject(session.user);
 
-    // Check if user has permission to access emergencies module
     if (!canAccessModule(user, 'emergencies')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
@@ -47,7 +58,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const status = searchParams.get('status');
-    const countyId = searchParam.get('countyId');
+    const countyId = searchParams.get('countyId');
     const type = searchParams.get('type');
     const severity = searchParams.get('severity');
 
@@ -60,7 +71,6 @@ export async function GET(request: NextRequest) {
     if (type) where.type = type;
     if (severity) where.severity = severity;
 
-    // Role-based access control
     if (user.role === 'COUNTY_ADMIN') {
       where.countyId = user.countyId;
     } else if (user.role === 'HOSPITAL_ADMIN') {
@@ -113,7 +123,6 @@ export async function GET(request: NextRequest) {
       prisma.emergency.count({ where })
     ]);
 
-    // Log the view action
     await auditLog({
       action: 'READ',
       entityType: 'EMERGENCY',
@@ -138,7 +147,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching emergencies:', error);
     
-    // Log failed access attempt
     const session = await getServerSession(authOptions);
     if (session?.user) {
       const user = createUserObject(session.user);
@@ -171,10 +179,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Create proper user object with permissions
     const user = createUserObject(session.user);
 
-    // Check permissions - only users with emergencies.write can create emergencies
     if (!hasPermission(user, 'emergencies.write')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
@@ -194,7 +200,6 @@ export async function POST(request: NextRequest) {
 
     const data = validation.data;
 
-    // Verify county exists
     const county = await prisma.county.findUnique({
       where: { id: data.countyId }
     });
@@ -203,7 +208,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'County not found' }, { status: 404 });
     }
 
-    // Check access permissions for county-level access
     if (user.role === 'COUNTY_ADMIN' && data.countyId !== user.countyId) {
       return NextResponse.json({ error: 'Access denied - can only create emergencies in your county' }, { status: 403 });
     }
@@ -217,21 +221,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate emergency number
     const emergencyNumber = `EMG-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`.toUpperCase();
 
-    // Prepare coordinates data - handle Prisma.JsonNull for null values
-    let coordinatesData: Prisma.InputJsonValue | null = null;
-    if (data.coordinates && data.coordinates.lat !== undefined && data.coordinates.lng !== undefined) {
-      coordinatesData = data.coordinates as Prisma.InputJsonValue;
-    } else {
-      coordinatesData = Prisma.JsonNull;
-    }
+    // Create coordinates data properly
+    const coordinatesData = data.coordinates ? data.coordinates : Prisma.JsonNull;
 
     console.log('Creating emergency with data:', {
       emergencyNumber,
       ...data,
-      coordinates: coordinatesData === Prisma.JsonNull ? null : coordinatesData,
+      coordinates: data.coordinates || null,
       status: 'REPORTED',
       reportedAt: new Date()
     });
@@ -265,7 +263,6 @@ export async function POST(request: NextRequest) {
 
     console.log('Emergency created successfully:', emergency);
 
-    // Log the action with detailed information
     await auditLog({
       action: 'CREATE',
       entityType: 'EMERGENCY',
@@ -284,14 +281,12 @@ export async function POST(request: NextRequest) {
       success: true
     });
 
-    // Trigger notifications to relevant parties
     await triggerEmergencyNotifications(emergency);
 
     return NextResponse.json(emergency, { status: 201 });
   } catch (error) {
     console.error('Error creating emergency:', error);
     
-    // Log failed creation attempt
     const session = await getServerSession(authOptions);
     if (session?.user) {
       const user = createUserObject(session.user);
@@ -319,7 +314,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH /api/emergencies - Bulk update emergencies (for status changes, etc.)
+// PATCH /api/emergencies - Bulk update emergencies
 export async function PATCH(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -327,10 +322,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Create proper user object with permissions
     const user = createUserObject(session.user);
 
-    // Check permissions - only users with emergencies.write can update emergencies
     if (!hasPermission(user, 'emergencies.write')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
@@ -350,7 +343,6 @@ export async function PATCH(request: NextRequest) {
 
     const { ids, data } = validation.data;
 
-    // Verify access to all emergencies
     const emergencies = await prisma.emergency.findMany({
       where: { id: { in: ids } }
     });
@@ -359,7 +351,6 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'One or more emergencies not found' }, { status: 404 });
     }
 
-    // Check access permissions for each emergency
     if (user.role === 'COUNTY_ADMIN') {
       const unauthorized = emergencies.some(emergency => emergency.countyId !== user.countyId);
       if (unauthorized) {
@@ -377,15 +368,27 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const updateData: any = { ...data };
+    // Build update data properly
+    const updateData: any = {};
     
-    // Handle coordinate updates - use Prisma.JsonNull for null values
-    if (data.coordinates) {
-      updateData.coordinates = data.coordinates as Prisma.InputJsonValue;
+    // Handle optional fields
+    if (data.type !== undefined) updateData.type = data.type;
+    if (data.severity !== undefined) updateData.severity = data.severity;
+    if (data.countyId !== undefined) updateData.countyId = data.countyId;
+    if (data.location !== undefined) updateData.location = data.location;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.cause !== undefined) updateData.cause = data.cause;
+    if (data.estimatedCasualties !== undefined) updateData.estimatedCasualties = data.estimatedCasualties;
+    if (data.reportedBy !== undefined) updateData.reportedBy = data.reportedBy;
+    if (data.reporterPhone !== undefined) updateData.reporterPhone = data.reporterPhone;
+    
+    // Handle coordinates separately
+    if (data.coordinates !== undefined) {
+      updateData.coordinates = data.coordinates ? data.coordinates : Prisma.JsonNull;
     }
 
-    // Handle status transitions
-    if (data.status) {
+    // Handle status separately
+    if (data.status !== undefined) {
       updateData.status = data.status;
       if (data.status === 'RESOLVED') {
         updateData.resolvedAt = new Date();
@@ -397,7 +400,6 @@ export async function PATCH(request: NextRequest) {
       data: updateData
     });
 
-    // Log the bulk update action
     await auditLog({
       action: 'UPDATE',
       entityType: 'EMERGENCY',
@@ -421,7 +423,6 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error('Error bulk updating emergencies:', error);
     
-    // Log failed update attempt
     const session = await getServerSession(authOptions);
     if (session?.user) {
       const user = createUserObject(session.user);
@@ -448,10 +449,8 @@ export async function PATCH(request: NextRequest) {
 
 async function triggerEmergencyNotifications(emergency: any) {
   try {
-    // Implementation for notifying relevant hospitals, dispatch centers, etc.
     console.log(`Emergency ${emergency.emergencyNumber} created - triggering notifications`);
     
-    // Notify hospitals in the affected county
     const hospitals = await prisma.hospital.findMany({
       where: { 
         countyId: emergency.countyId,
@@ -465,7 +464,6 @@ async function triggerEmergencyNotifications(emergency: any) {
       }
     });
 
-    // Create system alerts for relevant hospitals
     for (const hospital of hospitals) {
       await prisma.systemAlert.create({
         data: {
@@ -480,12 +478,11 @@ async function triggerEmergencyNotifications(emergency: any) {
           audienceType: 'SPECIFIC_HOSPITAL',
           targetRoles: ['HOSPITAL_ADMIN', 'DISPATCHER', 'DOCTOR'],
           requiresAction: true,
-          priority: 1 // Highest priority
+          priority: 1
         }
       });
     }
 
-    // Notify dispatch centers in the county
     const dispatchCenters = await prisma.dispatchCenter.findMany({
       where: { 
         countyId: emergency.countyId,

@@ -27,19 +27,76 @@ import { useTelemedicineCall } from '@/app/hooks/useTelemedicineCall'
 import Link from 'next/link'
 
 interface VideoCallPageProps {
-  params: {
+  params: Promise<{
     id: string
+  }>
+}
+
+// Helper function to transform session data
+function transformSessionData(session: any) {
+  if (!session) return session
+
+  // First get the scheduledAt value with fallback
+  const scheduledAtValue = session.scheduledAt || session.scheduledTime || session.startTime || new Date()
+  
+  // Then transform it to string if it's a Date
+  const scheduledAt = scheduledAtValue instanceof Date ? scheduledAtValue.toISOString() : scheduledAtValue
+
+  return {
+    ...session,
+    // Add the transformed scheduledAt
+    scheduledAt,
+    // Transform other date fields to strings if needed
+    startTime: session.startTime instanceof Date ? session.startTime.toISOString() : session.startTime,
+    endTime: session.endTime instanceof Date ? session.endTime.toISOString() : session.endTime,
+    createdAt: session.createdAt instanceof Date ? session.createdAt.toISOString() : session.createdAt,
+    updatedAt: session.updatedAt instanceof Date ? session.updatedAt.toISOString() : session.updatedAt,
   }
 }
 
-export default function VideoCallPage({ params }: VideoCallPageProps) {
+// Wrapper component that extracts params from Promise
+function VideoCallPageContent({ params }: VideoCallPageProps) {
+  const [resolvedParams, setResolvedParams] = useState<{ id: string } | null>(null)
+  
+  useEffect(() => {
+    const resolveParams = async () => {
+      const resolved = await params
+      setResolvedParams(resolved)
+    }
+    resolveParams()
+  }, [params])
+
+  // Show loading state while resolving params
+  if (!resolvedParams) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Loading...</CardTitle>
+            <CardDescription>Preparing video call</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  return <VideoCallPageInner params={resolvedParams} />
+}
+
+// Your original component logic
+function VideoCallPageInner({ params }: { params: { id: string } }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('call')
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoOff, setIsVideoOff] = useState(false)
   
   const {
-    session,
+    session: rawSession,
     isConnected,
     localStream,
     remoteStream,
@@ -51,6 +108,9 @@ export default function VideoCallPage({ params }: VideoCallPageProps) {
     isStarting,
     error
   } = useTelemedicineCall(params.id)
+
+  // Transform the session data to include required fields
+  const session = transformSessionData(rawSession)
 
   useEffect(() => {
     if (session?.status === 'SCHEDULED') {
@@ -245,3 +305,5 @@ export default function VideoCallPage({ params }: VideoCallPageProps) {
     </div>
   )
 }
+
+export default VideoCallPageContent

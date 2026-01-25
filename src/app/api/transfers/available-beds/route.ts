@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import prisma from '@/app/lib/prisma';
-import { authOptions } from '@/app/lib/auth';
+import { prisma } from '@/app/lib/prisma';
+import { authOptions } from '@/app/lib/auth-options';
+import { createUserObject } from '@/app/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,6 +12,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Create user object with proper permissions
+    const user = createUserObject(session.user);
+
     const { searchParams } = new URL(request.url);
     const hospitalId = searchParams.get('hospitalId');
     const department = searchParams.get('department');
@@ -18,6 +22,11 @@ export async function GET(request: NextRequest) {
 
     if (!hospitalId) {
       return NextResponse.json({ error: 'Hospital ID is required' }, { status: 400 });
+    }
+
+    // Check if user has access to this hospital
+    if (user.role === 'HOSPITAL_ADMIN' && user.facilityId !== hospitalId) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Get available beds and resources
@@ -74,7 +83,7 @@ export async function GET(request: NextRequest) {
           general: {
             available: beds.availableBeds,
             total: beds.totalBeds,
-            occupancy: ((beds.totalBeds - beds.availableBeds) / beds.totalBeds) * 100,
+            occupancy: beds.totalBeds > 0 ? ((beds.totalBeds - beds.availableBeds) / beds.totalBeds) * 100 : 0,
           },
           icu: {
             available: beds.availableIcuBeds,

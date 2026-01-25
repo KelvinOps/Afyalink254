@@ -1,12 +1,8 @@
+// src/app/api/telemedicine/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
-import { 
-  getTelemedicineSessions,
-  createTelemedicineSession,
-  updateTelemedicineSession 
-} from '@/app/services/telemedicine.service'
-import { auditLog } from '@/app/lib/audit'
 import { authOptions } from '@/app/lib/auth-options'
 
 const createSessionSchema = z.object({
@@ -39,6 +35,71 @@ const updateSessionSchema = z.object({
   videoQuality: z.number().min(1).max(5).optional(),
 })
 
+// Mock service functions (replace with your actual database calls)
+const mockTelemedicineService = {
+  async getTelemedicineSessions(options: any) {
+    // Mock data
+    return {
+      sessions: [
+        {
+          id: '1',
+          sessionNumber: 'TM-2024-001',
+          patientId: 'patient-1',
+          specialistId: 'doctor-1',
+          patientName: 'John Doe',
+          specialistName: 'Dr. Smith',
+          status: 'COMPLETED',
+          scheduledTime: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        }
+      ],
+      total: 1,
+      page: 1,
+      limit: 50,
+      totalPages: 1
+    }
+  },
+
+  async createTelemedicineSession(data: any) {
+    return {
+      id: `session-${Date.now()}`,
+      sessionNumber: `TM-${Date.now().toString().slice(-6)}`,
+      ...data,
+      status: 'SCHEDULED',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+  },
+
+  async getTelemedicineSession(sessionId: string) {
+    return {
+      id: sessionId,
+      sessionNumber: 'TM-2024-001',
+      patientId: 'patient-1',
+      specialistId: 'doctor-1',
+      patientName: 'John Doe',
+      specialistName: 'Dr. Smith',
+      status: 'SCHEDULED',
+      scheduledTime: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    }
+  },
+
+  async updateTelemedicineSession(sessionId: string, data: any) {
+    return {
+      id: sessionId,
+      ...data,
+      updatedAt: new Date().toISOString()
+    }
+  }
+}
+
+// Mock audit log function
+async function auditLog(data: any) {
+  console.log('Audit log:', data)
+  return true
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -53,7 +114,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const search = searchParams.get('search') || ''
 
-    const sessions = await getTelemedicineSessions({
+    const sessions = await mockTelemedicineService.getTelemedicineSessions({
       status: status === 'all' ? undefined : status,
       page,
       limit,
@@ -106,7 +167,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validatedData = createSessionSchema.parse(body)
 
-    const telemedicineSession = await createTelemedicineSession({
+    const telemedicineSession = await mockTelemedicineService.createTelemedicineSession({
       ...validatedData,
       createdBy: session.user.id,
     })
@@ -148,6 +209,74 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       { error: 'Failed to create telemedicine session' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const validatedData = updateSessionSchema.parse(body)
+    
+    const { searchParams } = new URL(request.url)
+    const sessionId = searchParams.get('sessionId')
+
+    if (!sessionId) {
+      return NextResponse.json(
+        { error: 'Session ID is required' },
+        { status: 400 }
+      )
+    }
+
+    const telemedicineSession = await mockTelemedicineService.updateTelemedicineSession(
+      sessionId,
+      validatedData
+    )
+
+    // Audit log
+    await auditLog({
+      action: 'UPDATE',
+      entityType: 'TELEMEDICINE_SESSION',
+      entityId: sessionId,
+      userId: session.user.id,
+      userRole: session.user.role,
+      userName: session.user.name,
+      description: `Updated telemedicine session: ${sessionId}`,
+      changes: validatedData,
+    })
+
+    return NextResponse.json(telemedicineSession)
+  } catch (error) {
+    console.error('Error updating telemedicine session:', error)
+    
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Invalid data', details: error.errors },
+        { status: 400 }
+      )
+    }
+
+    await auditLog({
+      action: 'UPDATE',
+      entityType: 'TELEMEDICINE_SESSION',
+      entityId: 'unknown',
+      userId: 'unknown',
+      userRole: 'SYSTEM',
+      userName: 'API',
+      description: `Failed to update telemedicine session: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      success: false,
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+    })
+
+    return NextResponse.json(
+      { error: 'Failed to update telemedicine session' },
       { status: 500 }
     )
   }

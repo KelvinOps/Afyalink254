@@ -1,15 +1,50 @@
+// src/app/api/telemedicine/token/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { Twilio } from 'twilio'
-import { getTelemedicineSession } from '@/app/services/telemedicine.service'
-import { auditLog } from '@/app/lib/audit'
 import { authOptions } from '@/app/lib/auth-options'
 
-// Initialize Twilio client
-const twilioClient = new Twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-)
+// Mock service functions
+const mockTelemedicineService = {
+  async getTelemedicineSession(sessionId: string) {
+    return {
+      id: sessionId,
+      sessionNumber: 'TM-2024-001',
+      patientId: 'patient-1',
+      specialistId: 'doctor-1',
+      patientName: 'John Doe',
+      specialistName: 'Dr. Smith',
+      status: 'SCHEDULED',
+      scheduledTime: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    }
+  }
+}
+
+// Mock audit log function
+async function auditLog(data: any) {
+  console.log('Audit log:', data)
+  return true
+}
+
+// Simple token generator (replace with your actual video provider)
+function generateVideoToken(identity: string, roomName: string) {
+  // This is a mock token generator
+  // Replace with Twilio, Agora, or your preferred video service
+  const mockToken = {
+    token: `video-token-${identity}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    roomName,
+    identity,
+    expiresAt: Date.now() + 3600000, // 1 hour
+    serverUrl: process.env.VIDEO_SERVER_URL || 'wss://localhost:3001',
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  }
+
+  return mockToken
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the session exists and user has access
-    const telemedicineSession = await getTelemedicineSession(sessionId)
+    const telemedicineSession = await mockTelemedicineService.getTelemedicineSession(sessionId)
     if (!telemedicineSession) {
       return NextResponse.json(
         { error: 'Telemedicine session not found' },
@@ -52,22 +87,8 @@ export async function POST(request: NextRequest) {
     // Create a unique room name based on session ID
     const roomName = `telemedicine-session-${sessionId}`
 
-    // Generate access token for Twilio Video
-    const token = new Twilio.jwt.AccessToken(
-      process.env.TWILIO_ACCOUNT_SID!,
-      process.env.TWILIO_API_KEY!,
-      process.env.TWILIO_API_SECRET!,
-      {
-        identity: session.user.id,
-        ttl: 3600, // 1 hour
-      }
-    )
-
-    // Grant video capabilities
-    const videoGrant = new Twilio.jwt.AccessToken.VideoGrant({
-      room: roomName,
-    })
-    token.addGrant(videoGrant)
+    // Generate video call token
+    const token = generateVideoToken(session.user.id, roomName)
 
     // Audit log
     await auditLog({
@@ -77,17 +98,15 @@ export async function POST(request: NextRequest) {
       userId: session.user.id,
       userRole: session.user.role,
       userName: session.user.name,
-      description: `Generated WebRTC token for telemedicine session: ${telemedicineSession.sessionNumber}`,
+      description: `Generated video token for telemedicine session: ${telemedicineSession.sessionNumber}`,
     })
 
     return NextResponse.json({
-      token: token.toJwt(),
-      roomName,
+      ...token,
       sessionId,
-      identity: session.user.id
     })
   } catch (error) {
-    console.error('Error generating WebRTC token:', error)
+    console.error('Error generating video token:', error)
     
     await auditLog({
       action: 'CREATE',
@@ -96,7 +115,7 @@ export async function POST(request: NextRequest) {
       userId: 'unknown',
       userRole: 'SYSTEM',
       userName: 'API',
-      description: `Failed to generate WebRTC token: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      description: `Failed to generate video token: ${error instanceof Error ? error.message : 'Unknown error'}`,
       success: false,
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
     })
@@ -108,7 +127,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Alternative implementation using simple UUID for non-Twilio setups
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -128,7 +146,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify the session exists and user has access
-    const telemedicineSession = await getTelemedicineSession(sessionId)
+    const telemedicineSession = await mockTelemedicineService.getTelemedicineSession(sessionId)
     if (!telemedicineSession) {
       return NextResponse.json(
         { error: 'Telemedicine session not found' },
@@ -148,15 +166,11 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Generate simple token for non-Twilio video solutions
-    const token = {
-      token: `video-token-${sessionId}-${Date.now()}`,
-      roomName: `session-${sessionId}`,
-      sessionId,
-      identity: session.user.id,
-      expiresAt: Date.now() + 3600000, // 1 hour
-      serverUrl: process.env.VIDEO_SERVER_URL || 'wss://localhost:3001'
-    }
+    // Create a unique room name based on session ID
+    const roomName = `telemedicine-session-${sessionId}`
+
+    // Generate video call token
+    const token = generateVideoToken(session.user.id, roomName)
 
     // Audit log
     await auditLog({
@@ -169,7 +183,10 @@ export async function GET(request: NextRequest) {
       description: `Generated video token for telemedicine session: ${telemedicineSession.sessionNumber}`,
     })
 
-    return NextResponse.json(token)
+    return NextResponse.json({
+      ...token,
+      sessionId,
+    })
   } catch (error) {
     console.error('Error generating video token:', error)
     

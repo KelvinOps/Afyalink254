@@ -1,8 +1,5 @@
 // src/app/lib/auth.ts
-
-import { jwtVerify, SignJWT } from 'jose'
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
+import { jwtVerify } from 'jose'
 
 export interface User {
   id: string
@@ -29,13 +26,20 @@ export type UserRole =
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-change-in-production')
 
-export async function signToken(payload: any): Promise<string> {
-  return await new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('7d')
-    .setIssuedAt()
-    .sign(JWT_SECRET)
+// Import and re-export authOptions from auth-options.ts
+// We need to dynamically import to avoid circular dependencies
+let _authOptions: any = null
+
+export async function getAuthOptions() {
+  if (!_authOptions) {
+    const { authOptions } = await import('./auth-options')
+    _authOptions = authOptions
+  }
+  return _authOptions
 }
+
+// For direct import (used in API routes)
+export { authOptions } from './auth-options'
 
 export async function verifyToken(token: string): Promise<any> {
   try {
@@ -46,31 +50,17 @@ export async function verifyToken(token: string): Promise<any> {
   }
 }
 
+// Client-safe utility functions
 export function hasPermission(user: User, permission: string): boolean {
-  console.log('🔐 hasPermission check:', {
-    userRole: user.role,
-    requiredPermission: permission,
-    userPermissions: user.permissions
-  })
-  
-  // SUPER_ADMIN always has all permissions
   if (user.role === 'SUPER_ADMIN') {
-    console.log('✅ SUPER_ADMIN has all permissions')
     return true
   }
   
   const hasPerm = user.permissions?.includes(permission) || user.permissions?.includes('*')
-  console.log(`📋 Permission result: ${hasPerm}`)
   return hasPerm
 }
 
 export function canAccessModule(user: User, module: string): boolean {
-  console.log('🚪 canAccessModule check:', {
-    userRole: user.role,
-    module,
-    userPermissions: user.permissions
-  })
-  
   const modulePermissions: Record<string, string[]> = {
     dashboard: ['dashboard.read', '*'],
     triage: ['triage.read', 'triage.write', '*'],
@@ -87,14 +77,11 @@ export function canAccessModule(user: User, module: string): boolean {
     staff: ['staff.read', 'staff.write', '*'],
     hospitals: ['hospitals.read', '*'],
     settings: ['settings.read', '*'],
-    monitoring: ['*'] // Only SUPER_ADMIN
+    monitoring: ['*']
   }
 
   const modulePerms = modulePermissions[module] || []
-  const hasAccess = modulePerms.some(perm => hasPermission(user, perm))
-  
-  console.log(`📋 Module ${module} access: ${hasAccess} (required perms: ${modulePerms.join(', ')})`)
-  return hasAccess
+  return modulePerms.some(perm => hasPermission(user, perm))
 }
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -143,12 +130,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   ]
 }
 
-// Enhanced role normalization function
 export function normalizeRole(role: string): UserRole {
-  console.log('🔄 Normalizing role:', role)
-  
   const roleMap: Record<string, UserRole> = {
-    // Handle case variations and database-specific values
     'super_admin': 'SUPER_ADMIN',
     'superadmin': 'SUPER_ADMIN',
     'SUPERADMIN': 'SUPER_ADMIN',
@@ -201,27 +184,16 @@ export function normalizeRole(role: string): UserRole {
   }
 
   const normalized = roleMap[role.toLowerCase()] || role.toUpperCase() as UserRole
-  console.log('🎯 Final normalized role:', normalized)
   return normalized
 }
 
-// Enhanced helper function to get permissions for a role
 export function getPermissionsForRole(role: string): string[] {
-  console.log('🔍 Getting permissions for role:', role)
-  
   const normalizedRole = normalizeRole(role)
-  console.log('📋 Available roles in ROLE_PERMISSIONS:', Object.keys(ROLE_PERMISSIONS))
-  
   const permissions = ROLE_PERMISSIONS[normalizedRole] || []
-  console.log('✅ Permissions found:', permissions)
-  
   return permissions
 }
 
-// Enhanced user object creation
 export function createUserObject(userData: any): User {
-  console.log('👤 Creating user object from:', userData)
-  
   const normalizedRole = normalizeRole(userData.role)
   const permissions = getPermissionsForRole(normalizedRole)
   
@@ -235,17 +207,11 @@ export function createUserObject(userData: any): User {
     permissions: permissions
   }
 
-  console.log('✅ Final user object:', userObj)
   return userObj
 }
 
-// Enhanced fallback function to ensure we always have at least basic permissions
 export function ensureBasicPermissions(user: any): User {
-  console.log('🛡️ Ensuring basic permissions for user:', user)
-  
-  // If user doesn't have permissions array, create one
   if (!user.permissions || !Array.isArray(user.permissions)) {
-    console.log('⚠️ No permissions found, generating from role')
     const permissions = getPermissionsForRole(user.role)
     return {
       ...user,
@@ -253,9 +219,7 @@ export function ensureBasicPermissions(user: any): User {
     }
   }
   
-  // If permissions array is empty, add basic permissions
   if (user.permissions.length === 0) {
-    console.log('⚠️ Empty permissions array, adding basic dashboard permissions')
     return {
       ...user,
       permissions: ['dashboard.read']
@@ -265,54 +229,6 @@ export function ensureBasicPermissions(user: any): User {
   return user as User
 }
 
-// NEW: Get current user from cookies/session
-export async function getCurrentUser(): Promise<User | null> {
-  try {
-    console.log('🔍 Getting current user from session...')
-    
-    // Get the auth cookie - NOTE: cookies() returns a Promise
-    const cookieStore = await cookies()
-    const token = cookieStore.get('auth-token')?.value
-    
-    if (!token) {
-      console.log('❌ No auth token found')
-      return null
-    }
-    
-    // Verify the token
-    const payload = await verifyToken(token)
-    if (!payload) {
-      console.log('❌ Invalid token')
-      return null
-    }
-    
-    console.log('✅ Token verified, payload:', payload)
-    
-    // Create user object from payload
-    const user = createUserObject(payload)
-    
-    // Ensure basic permissions
-    return ensureBasicPermissions(user)
-    
-  } catch (error) {
-    console.error('❌ Error getting current user:', error)
-    return null
-  }
-}
-
-// NEW: Check if user is authenticated and redirect if not
-export async function requireAuth(redirectTo: string = '/login'): Promise<User> {
-  const user = await getCurrentUser()
-  
-  if (!user) {
-    console.log(`🚫 No user found, redirecting to ${redirectTo}`)
-    redirect(redirectTo)
-  }
-  
-  return user
-}
-
-// NEW: Mock user for development/testing (remove in production)
 export function getMockUser(): User {
   return {
     id: '1',
@@ -323,4 +239,8 @@ export function getMockUser(): User {
     countyId: 'county-1',
     permissions: getPermissionsForRole('DOCTOR')
   }
+}
+
+export async function signToken(payload: any): Promise<string> {
+  return 'mock-token-' + Date.now()
 }

@@ -2,14 +2,15 @@
 import { notFound } from 'next/navigation'
 import { StaffService } from '@/app/services/staff.service'
 import { StaffProfile } from '@/app/components/staff/StaffProfile'
-import { verifyToken, hasPermission, createUserObject } from '@/app/lib/auth'
+import { verifyToken, createUserObject } from '@/app/lib/auth'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 
-interface StaffDetailPageProps {
-  params: {
+// Define params as a Promise for Next.js 15
+type PageProps = {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 async function getSession() {
@@ -24,13 +25,18 @@ async function getSession() {
   return payload ? createUserObject(payload) : null
 }
 
-export default async function StaffDetailPage({ params }: StaffDetailPageProps) {
+export default async function StaffDetailPage(props: PageProps) {
+  // Await the params promise
+  const params = await props.params
   const session = await getSession()
   
   if (!session) {
     redirect('/login')
   }
 
+  // Import hasPermission dynamically
+  const { hasPermission } = await import('@/app/lib/auth')
+  
   // Check permission
   if (!hasPermission(session, 'staff.read')) {
     redirect('/staff')

@@ -1,3 +1,5 @@
+// src/app/(dashboard)/telemedicine/sessions/[id]/page.tsx
+
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Button } from '@/app/components/ui/button'
@@ -22,13 +24,27 @@ import { getCurrentUser } from '@/app/lib/get-current-user'
 import { canAccessModule } from '@/app/lib/auth'
 import { redirect } from 'next/navigation'
 
+// CORRECT TYPE DEFINITION FOR NEXT.JS 15
+// The params prop is a Promise in Next.js 15
 interface TelemedicineSessionPageProps {
-  params: {
+  params: Promise<{
     id: string
+  }>
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+// Optional: Generate metadata
+export async function generateMetadata(props: TelemedicineSessionPageProps) {
+  const params = await props.params
+  return {
+    title: `Telemedicine Session ${params.id}`,
+    description: 'Telemedicine session details',
   }
 }
 
-export default async function TelemedicineSessionPage({ params }: TelemedicineSessionPageProps) {
+export default async function TelemedicineSessionPage(props: TelemedicineSessionPageProps) {
+  // Await the params promise
+  const params = await props.params
   const user = await getCurrentUser()
   
   if (!user || !canAccessModule(user, 'telemedicine')) {

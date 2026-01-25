@@ -1,3 +1,4 @@
+// src/app/api/resources/critical-shortages/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/app/lib/prisma'
@@ -71,29 +72,29 @@ export async function GET(request: NextRequest) {
     // Transform and categorize shortages
     const shortages = criticalResources.map(resource => {
       let shortageType = 'OTHER'
-      let severity = 'MEDIUM'
+      let shortageSeverity = 'MEDIUM'
       let message = ''
 
       // Determine shortage type and severity
       if (resource.availableCapacity <= (resource.criticalLevel || 0)) {
         shortageType = 'STOCK_CRITICAL'
-        severity = 'CRITICAL'
+        shortageSeverity = 'CRITICAL'
         message = `Critical stock level: ${resource.availableCapacity} ${resource.unit} remaining`
       } else if (resource.availableCapacity <= (resource.reorderLevel || 0)) {
         shortageType = 'STOCK_LOW'
-        severity = 'HIGH'
+        shortageSeverity = 'HIGH'
         message = `Low stock level: ${resource.availableCapacity} ${resource.unit} remaining`
       } else if (!resource.isOperational) {
         shortageType = 'EQUIPMENT_DOWN'
-        severity = 'HIGH'
+        shortageSeverity = 'HIGH'
         message = 'Equipment is not operational'
       } else if (resource.nextMaintenance && resource.nextMaintenance <= new Date()) {
         shortageType = 'MAINTENANCE_OVERDUE'
-        severity = 'MEDIUM'
+        shortageSeverity = 'MEDIUM'
         message = 'Maintenance is overdue'
       } else if (resource.expiryDate && resource.expiryDate <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) {
         shortageType = 'EXPIRING_SOON'
-        severity = 'MEDIUM'
+        shortageSeverity = 'MEDIUM'
         message = 'Item expiring within 7 days'
       }
 
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
         criticalLevel: resource.criticalLevel,
         reorderLevel: resource.reorderLevel,
         shortageType,
-        severity,
+        severity: shortageSeverity,
         message,
         isOperational: resource.isOperational,
         nextMaintenance: resource.nextMaintenance?.toISOString(),

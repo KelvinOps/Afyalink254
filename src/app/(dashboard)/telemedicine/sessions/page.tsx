@@ -1,3 +1,5 @@
+// src/app/(dashboard)/telemedicine/sessions/page.tsx
+
 import Link from 'next/link'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
@@ -9,26 +11,25 @@ import { getCurrentUser } from '@/app/lib/get-current-user'
 import { canAccessModule } from '@/app/lib/auth'
 import { redirect } from 'next/navigation'
 
-interface SearchParams {
-  status?: string
-  search?: string
-  page?: string
-}
-
+// CORRECT TYPE FOR NEXT.JS 15
 interface TelemedicineSessionsPageProps {
-  searchParams: SearchParams
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
-export default async function TelemedicineSessionsPage({ searchParams }: TelemedicineSessionsPageProps) {
+export default async function TelemedicineSessionsPage(props: TelemedicineSessionsPageProps) {
+  // Await the searchParams promise
+  const searchParams = await props.searchParams
   const user = await getCurrentUser()
   
   if (!user || !canAccessModule(user, 'telemedicine')) {
     redirect('/unauthorized')
   }
 
-  const status = searchParams.status || 'all'
-  const search = searchParams.search || ''
-  const page = parseInt(searchParams.page || '1')
+  // Extract parameters with proper type handling
+  const status = Array.isArray(searchParams.status) ? searchParams.status[0] || 'all' : searchParams.status || 'all'
+  const search = Array.isArray(searchParams.search) ? searchParams.search[0] || '' : searchParams.search || ''
+  const pageParam = Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page
+  const page = pageParam ? parseInt(pageParam) : 1
 
   return (
     <div className="space-y-6">
@@ -91,8 +92,90 @@ export default async function TelemedicineSessionsPage({ searchParams }: Telemed
           </Card>
         </TabsContent>
 
-        {/* ... other tabs remain the same ... */}
+        <TabsContent value="scheduled" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Scheduled Sessions</CardTitle>
+              <CardDescription>
+                Upcoming telemedicine consultations
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TelemedicineSessionsTable 
+                status="SCHEDULED"
+                search={search}
+                page={page}
+                userId={user.id}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="in-progress" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Active Sessions</CardTitle>
+              <CardDescription>
+                Telemedicine consultations currently in progress
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TelemedicineSessionsTable 
+                status="IN_PROGRESS"
+                search={search}
+                page={page}
+                userId={user.id}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="completed" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Completed Sessions</CardTitle>
+              <CardDescription>
+                Successfully completed telemedicine consultations
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TelemedicineSessionsTable 
+                status="COMPLETED"
+                search={search}
+                page={page}
+                userId={user.id}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="cancelled" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Cancelled Sessions</CardTitle>
+              <CardDescription>
+                Telemedicine consultations that were cancelled
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TelemedicineSessionsTable 
+                status="CANCELLED"
+                search={search}
+                page={page}
+                userId={user.id}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
   )
+}
+
+// Optional: Add metadata generation
+export async function generateMetadata() {
+  return {
+    title: 'Telemedicine Sessions',
+    description: 'Manage telemedicine consultations',
+  }
 }

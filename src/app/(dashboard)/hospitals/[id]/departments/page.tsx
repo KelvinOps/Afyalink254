@@ -7,14 +7,60 @@ import { verifyToken, createUserObject } from '@/app/lib/auth'
 import { cookies } from 'next/headers'
 
 interface HospitalDepartmentsPageProps {
-  params: {
+  params: Promise<{
     id: string
+  }>
+}
+
+// Helper function to transform Date objects to strings
+function transformHospitalDates(hospital: any) {
+  return {
+    ...hospital,
+    lastBedUpdate: hospital.lastBedUpdate?.toISOString() || null,
+    shaActivationDate: hospital.shaActivationDate?.toISOString() || null,
+    createdAt: hospital.createdAt?.toISOString() || null,
+    updatedAt: hospital.updatedAt?.toISOString() || null,
+    // Transform any other Date fields as needed
+    performanceMetrics: hospital.performanceMetrics?.map((metric: any) => ({
+      ...metric,
+      date: metric.date?.toISOString() || null,
+      createdAt: metric.createdAt?.toISOString() || null,
+      updatedAt: metric.updatedAt?.toISOString() || null,
+    })) || [],
+    departments: hospital.departments?.map((dept: any) => ({
+      ...dept,
+      createdAt: dept.createdAt?.toISOString() || null,
+      updatedAt: dept.updatedAt?.toISOString() || null,
+    })) || [],
+    staff: hospital.staff?.map((staffMember: any) => ({
+      ...staffMember,
+      hireDate: staffMember.hireDate?.toISOString() || null,
+      lastPaidDate: staffMember.lastPaidDate?.toISOString() || null,
+      shiftStart: staffMember.shiftStart?.toISOString() || null,
+      shiftEnd: staffMember.shiftEnd?.toISOString() || null,
+      createdAt: staffMember.createdAt?.toISOString() || null,
+      updatedAt: staffMember.updatedAt?.toISOString() || null,
+    })) || [],
+    resources: hospital.resources?.map((resource: any) => ({
+      ...resource,
+      lastMaintenance: resource.lastMaintenance?.toISOString() || null,
+      nextMaintenance: resource.nextMaintenance?.toISOString() || null,
+      lastRestock: resource.lastRestock?.toISOString() || null,
+      expiryDate: resource.expiryDate?.toISOString() || null,
+      createdAt: resource.createdAt?.toISOString() || null,
+      updatedAt: resource.updatedAt?.toISOString() || null,
+    })) || [],
+    county: hospital.county ? {
+      ...hospital.county,
+      createdAt: hospital.county.createdAt?.toISOString() || null,
+      updatedAt: hospital.county.updatedAt?.toISOString() || null,
+    } : null,
   }
 }
 
-// Helper function to get authenticated user (similar to your route file)
+// Helper function to get authenticated user
 async function getAuthenticatedUser() {
-  const cookieStore = await cookies() // Added await here
+  const cookieStore = await cookies()
   const token = cookieStore.get('token')?.value
 
   if (!token) {
@@ -36,7 +82,8 @@ async function getAuthenticatedUser() {
   })
 }
 
-export async function generateMetadata({ params }: HospitalDepartmentsPageProps): Promise<Metadata> {
+export async function generateMetadata(props: HospitalDepartmentsPageProps): Promise<Metadata> {
+  const params = await props.params
   const hospital = await getHospitalById(params.id)
   
   if (!hospital) {
@@ -50,13 +97,18 @@ export async function generateMetadata({ params }: HospitalDepartmentsPageProps)
   }
 }
 
-export default async function HospitalDepartmentsPage({ params }: HospitalDepartmentsPageProps) {
+export default async function HospitalDepartmentsPage(props: HospitalDepartmentsPageProps) {
+  // Await the params promise
+  const params = await props.params
   const user = await getAuthenticatedUser()
   const hospital = await getHospitalById(params.id)
 
   if (!hospital) {
     notFound()
   }
+
+  // Transform the hospital data to match the expected type
+  const transformedHospital = transformHospitalDates(hospital)
 
   return (
     <div className="space-y-6">
@@ -72,7 +124,7 @@ export default async function HospitalDepartmentsPage({ params }: HospitalDepart
       <HospitalTabs hospitalId={hospital.id} activeTab="departments" />
       
       <HospitalDepartments 
-        hospital={hospital} 
+        hospital={transformedHospital} 
         user={user}
       />
     </div>

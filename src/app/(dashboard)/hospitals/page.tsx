@@ -12,15 +12,16 @@ export const metadata: Metadata = {
   description: 'Manage hospitals across Kenya\'s 47 counties',
 }
 
-interface HospitalsPageProps {
-  searchParams: {
+// Define props for Next.js 15 - searchParams is now a Promise
+type PageProps = {
+  searchParams: Promise<{
     county?: string
     level?: string
     type?: string
     status?: string
     search?: string
     page?: string
-  }
+  }>
 }
 
 // Helper function to get authenticated user
@@ -57,6 +58,7 @@ function normalizeHospitals(hospitals: any[]) {
       ? hospital.lastBedUpdate
       : new Date().toISOString(),
     // Add any other date field conversions if needed
+    shaActivationDate: hospital.shaActivationDate instanceof Date ? hospital.shaActivationDate.toISOString() : hospital.shaActivationDate,
     createdAt: hospital.createdAt instanceof Date ? hospital.createdAt.toISOString() : hospital.createdAt,
     updatedAt: hospital.updatedAt instanceof Date ? hospital.updatedAt.toISOString() : hospital.updatedAt,
   }))
@@ -73,8 +75,11 @@ function transformPagination(apiPagination: any) {
   }
 }
 
-export default async function HospitalsPage({ searchParams }: HospitalsPageProps) {
+export default async function HospitalsPage(props: PageProps) {
+  // Await the searchParams promise
+  const searchParams = await props.searchParams
   const user = await getAuthenticatedUser()
+  
   const hospitalsResponse = await getHospitals({
     county: searchParams.county,
     level: searchParams.level,

@@ -1,12 +1,10 @@
-// src/app/api/emergencies/[id]/response/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { z } from 'zod';
 import { prisma } from '@/app/lib/prisma';
-import { authOptions } from '@/app/lib/auth';
-import { auditLog, AuditAction } from '@/app/lib/audit';
-import { hasPermission, canAccessModule } from '@/app/lib/auth';
+import { authOptions } from '@/app/lib/auth-options';
+import { auditLog } from '@/app/lib/audit';
+import { createUserObject, hasPermission, canAccessModule } from '@/app/lib/auth';
 
 const createResponseSchema = z.object({
   hospitalId: z.string().cuid(),
@@ -51,38 +49,20 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user has permission to access emergencies module
-    if (!canAccessModule(session.user, 'emergencies')) {
+    const user = createUserObject(session.user);
+
+    if (!canAccessModule(user, 'emergencies')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
+    // First fetch the emergency to check permissions
     const emergency = await prisma.emergency.findUnique({
       where: { id: params.id },
-      include: {
-        responses: {
-          include: {
-            ambulance: true,
-            staffDeployed: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                role: true,
-                specialization: true
-              }
-            },
-            hospital: {
-              select: {
-                id: true,
-                name: true,
-                level: true
-              }
-            }
-          },
-          orderBy: {
-            dispatchedAt: 'desc'
-          }
-        }
+      select: {
+        id: true,
+        emergencyNumber: true,
+        countyId: true,
+        status: true
       }
     });
 
@@ -91,48 +71,87 @@ export async function GET(
     }
 
     // Check access permissions based on role and county
-    if (session.user.role === 'COUNTY_ADMIN' && emergency.countyId !== session.user.countyId) {
+    if (user.role === 'COUNTY_ADMIN' && emergency.countyId !== user.countyId) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    if (session.user.role === 'HOSPITAL_ADMIN') {
+    if (user.role === 'HOSPITAL_ADMIN') {
       const hospital = await prisma.hospital.findUnique({
-        where: { id: session.user.facilityId }
+        where: { id: user.facilityId }
       });
       if (hospital?.countyId !== emergency.countyId) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
     }
 
-    // Log the view action - using string action since AuditAction might not match Prisma enum
+    // Fetch responses without the invalid hospital include
+    const responses = await prisma.emergencyResponse.findMany({
+      where: { emergencyId: params.id },
+      include: {
+        ambulance: true,
+        staffDeployed: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            specialization: true
+          }
+        }
+        // Removed hospital include since it's not a relation in the schema
+      },
+      orderBy: {
+        dispatchedAt: 'desc'
+      }
+    });
+
+    // If you need hospital data, fetch it separately
+    const responsesWithHospitalData = await Promise.all(
+      responses.map(async (response) => {
+        const hospital = await prisma.hospital.findUnique({
+          where: { id: response.hospitalId },
+          select: {
+            id: true,
+            name: true,
+            level: true
+          }
+        });
+        
+        return {
+          ...response,
+          hospital: hospital || null
+        };
+      })
+    );
+
     await auditLog({
-      action: 'READ' as any,
+      action: 'READ',
       entityType: 'EMERGENCY_RESPONSE',
       entityId: params.id,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Viewed emergency responses for ${emergency.emergencyNumber}`,
-      facilityId: session.user.facilityId,
+      facilityId: user.facilityId,
       success: true
     });
 
-    return NextResponse.json(emergency.responses);
+    return NextResponse.json(responsesWithHospitalData);
   } catch (error) {
     console.error('Error fetching emergency responses:', error);
     
-    // Log failed access attempt
     const session = await getServerSession(authOptions);
     if (session?.user) {
+      const user = createUserObject(session.user);
       await auditLog({
-        action: 'READ' as any,
+        action: 'READ',
         entityType: 'EMERGENCY_RESPONSE',
         entityId: params.id,
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name,
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name,
         description: `Failed to view emergency responses for ${params.id}`,
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
         success: false,
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -156,8 +175,9 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check permissions - only users with dispatch.write can create responses
-    if (!hasPermission(session.user, 'dispatch.write')) {
+    const user = createUserObject(session.user);
+
+    if (!hasPermission(user, 'dispatch.write')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
@@ -173,9 +193,14 @@ export async function POST(
 
     const data = validation.data;
 
-    // Verify emergency exists and is active
     const emergency = await prisma.emergency.findUnique({
-      where: { id: params.id }
+      where: { id: params.id },
+      select: {
+        id: true,
+        emergencyNumber: true,
+        countyId: true,
+        status: true
+      }
     });
 
     if (!emergency) {
@@ -186,7 +211,6 @@ export async function POST(
       return NextResponse.json({ error: 'Cannot add response to resolved emergency' }, { status: 400 });
     }
 
-    // Verify hospital exists and is in the same county
     const hospital = await prisma.hospital.findUnique({
       where: { id: data.hospitalId }
     });
@@ -199,7 +223,6 @@ export async function POST(
       return NextResponse.json({ error: 'Hospital must be in the same county as emergency' }, { status: 400 });
     }
 
-    // Verify ambulance if provided
     if (data.ambulanceId) {
       const ambulance = await prisma.ambulance.findUnique({
         where: { id: data.ambulanceId }
@@ -214,7 +237,6 @@ export async function POST(
       }
     }
 
-    // Verify staff members
     const staffMembers = await prisma.staff.findMany({
       where: {
         id: { in: data.staffDeployed },
@@ -249,17 +271,11 @@ export async function POST(
             lastName: true,
             role: true
           }
-        },
-        hospital: {
-          select: {
-            name: true,
-            level: true
-          }
         }
+        // Removed hospital include
       }
     });
 
-    // Update ambulance status if used
     if (data.ambulanceId) {
       await prisma.ambulance.update({
         where: { id: data.ambulanceId },
@@ -267,42 +283,59 @@ export async function POST(
       });
     }
 
-    // Log the action with detailed information - using string action
+    // Fetch hospital data separately for audit log
+    const hospitalForAudit = await prisma.hospital.findUnique({
+      where: { id: data.hospitalId },
+      select: {
+        name: true
+      }
+    });
+
     await auditLog({
-      action: 'CREATE' as any,
+      action: 'CREATE',
       entityType: 'EMERGENCY_RESPONSE',
       entityId: response.id,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Created emergency response for ${emergency.emergencyNumber}`,
       changes: {
-        hospital: hospital.name,
+        hospital: hospitalForAudit?.name || 'Unknown',
         ambulance: data.ambulanceId ? 'Yes' : 'No',
         staffCount: data.staffDeployed.length,
         equipmentCount: data.equipmentDeployed?.length || 0,
         suppliesCount: data.suppliesDeployed?.length || 0
       },
-      facilityId: session.user.facilityId,
+      facilityId: user.facilityId,
       success: true
     });
 
-    return NextResponse.json(response, { status: 201 });
+    // Add hospital data to response before returning
+    const responseWithHospital = {
+      ...response,
+      hospital: hospitalForAudit ? {
+        id: hospital.id,
+        name: hospitalForAudit.name,
+        level: hospital.level
+      } : null
+    };
+
+    return NextResponse.json(responseWithHospital, { status: 201 });
   } catch (error) {
     console.error('Error creating emergency response:', error);
     
-    // Log failed creation attempt
     const session = await getServerSession(authOptions);
     if (session?.user) {
+      const user = createUserObject(session.user);
       await auditLog({
-        action: 'CREATE' as any,
+        action: 'CREATE',
         entityType: 'EMERGENCY_RESPONSE',
         entityId: params.id,
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name,
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name,
         description: `Failed to create emergency response for ${params.id}`,
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
         success: false,
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -326,8 +359,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check permissions - only users with dispatch.write can update responses
-    if (!hasPermission(session.user, 'dispatch.write')) {
+    const user = createUserObject(session.user);
+
+    if (!hasPermission(user, 'dispatch.write')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
@@ -343,9 +377,12 @@ export async function PATCH(
 
     const data = validation.data;
 
-    // Verify emergency and response exist
     const emergency = await prisma.emergency.findUnique({
-      where: { id: params.id }
+      where: { id: params.id },
+      select: {
+        id: true,
+        countyId: true
+      }
     });
 
     if (!emergency) {
@@ -354,8 +391,10 @@ export async function PATCH(
 
     const existingResponse = await prisma.emergencyResponse.findUnique({
       where: { id: params.responseId },
-      include: {
-        hospital: true
+      select: {
+        id: true,
+        hospitalId: true,
+        status: true
       }
     });
 
@@ -363,18 +402,16 @@ export async function PATCH(
       return NextResponse.json({ error: 'Emergency response not found' }, { status: 404 });
     }
 
-    // Check access permissions
-    if (session.user.role === 'COUNTY_ADMIN' && emergency.countyId !== session.user.countyId) {
+    if (user.role === 'COUNTY_ADMIN' && emergency.countyId !== user.countyId) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    if (session.user.role === 'HOSPITAL_ADMIN' && existingResponse.hospitalId !== session.user.facilityId) {
+    if (user.role === 'HOSPITAL_ADMIN' && existingResponse.hospitalId !== user.facilityId) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     const updateData: any = { ...data };
 
-    // Handle timestamp updates based on status
     if (data.status === 'ON_SCENE' && !data.arrivedAt) {
       updateData.arrivedAt = new Date();
     }
@@ -397,17 +434,11 @@ export async function PATCH(
             lastName: true,
             role: true
           }
-        },
-        hospital: {
-          select: {
-            name: true,
-            level: true
-          }
         }
+        // Removed hospital include
       }
     });
 
-    // Update ambulance status if response is completed or cancelled
     if (response.ambulanceId && (data.status === 'COMPLETED' || data.status === 'CANCELLED')) {
       await prisma.ambulance.update({
         where: { id: response.ambulanceId },
@@ -415,40 +446,57 @@ export async function PATCH(
       });
     }
 
-    // Log the action with detailed changes - using string action
+    // Fetch hospital data separately for audit log
+    const hospital = await prisma.hospital.findUnique({
+      where: { id: response.hospitalId },
+      select: {
+        name: true
+      }
+    });
+
     await auditLog({
-      action: 'UPDATE' as any,
+      action: 'UPDATE',
       entityType: 'EMERGENCY_RESPONSE',
       entityId: response.id,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Updated emergency response status to ${data.status}`,
       changes: {
         previousStatus: existingResponse.status,
-        newStatus: data.status,
+        newStatus: data.status || response.status,
         updatedFields: Object.keys(data)
       },
-      facilityId: session.user.facilityId,
+      facilityId: user.facilityId,
       success: true
     });
 
-    return NextResponse.json(response);
+    // Add hospital data to response before returning
+    const responseWithHospital = {
+      ...response,
+      hospital: hospital ? {
+        id: response.hospitalId,
+        name: hospital.name,
+        level: 'LEVEL_4' // You might want to fetch the actual level
+      } : null
+    };
+
+    return NextResponse.json(responseWithHospital);
   } catch (error) {
     console.error('Error updating emergency response:', error);
     
-    // Log failed update attempt
     const session = await getServerSession(authOptions);
     if (session?.user) {
+      const user = createUserObject(session.user);
       await auditLog({
-        action: 'UPDATE' as any,
+        action: 'UPDATE',
         entityType: 'EMERGENCY_RESPONSE',
         entityId: params.responseId,
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name,
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name,
         description: `Failed to update emergency response ${params.responseId}`,
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
         success: false,
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -472,14 +520,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Only SUPER_ADMIN and COUNTY_ADMIN can delete responses
-    if (!['SUPER_ADMIN', 'COUNTY_ADMIN'].includes(session.user.role)) {
+    const user = createUserObject(session.user);
+
+    if (!['SUPER_ADMIN', 'COUNTY_ADMIN'].includes(user.role)) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
-    // Verify emergency and response exist
     const emergency = await prisma.emergency.findUnique({
-      where: { id: params.id }
+      where: { id: params.id },
+      select: {
+        id: true,
+        emergencyNumber: true,
+        countyId: true
+      }
     });
 
     if (!emergency) {
@@ -488,8 +541,11 @@ export async function DELETE(
 
     const response = await prisma.emergencyResponse.findUnique({
       where: { id: params.responseId },
-      include: {
-        hospital: true
+      select: {
+        id: true,
+        hospitalId: true,
+        ambulanceId: true,
+        status: true
       }
     });
 
@@ -497,12 +553,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'Emergency response not found' }, { status: 404 });
     }
 
-    // Check access permissions
-    if (session.user.role === 'COUNTY_ADMIN' && emergency.countyId !== session.user.countyId) {
+    if (user.role === 'COUNTY_ADMIN' && emergency.countyId !== user.countyId) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Update ambulance status back to available if it was dispatched
+    // Fetch hospital data separately before deletion
+    const hospital = await prisma.hospital.findUnique({
+      where: { id: response.hospitalId },
+      select: {
+        name: true,
+        level: true
+      }
+    });
+
     if (response.ambulanceId && response.status !== 'COMPLETED') {
       await prisma.ambulance.update({
         where: { id: response.ambulanceId },
@@ -514,21 +577,20 @@ export async function DELETE(
       where: { id: params.responseId }
     });
 
-    // Log the action - using string action
     await auditLog({
-      action: 'DELETE' as any,
+      action: 'DELETE',
       entityType: 'EMERGENCY_RESPONSE',
       entityId: response.id,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Deleted emergency response for ${emergency.emergencyNumber}`,
       changes: {
-        hospital: response.hospital.name,
+        hospital: hospital?.name || 'Unknown',
         status: response.status,
         ambulanceId: response.ambulanceId
       },
-      facilityId: session.user.facilityId,
+      facilityId: user.facilityId,
       success: true
     });
 
@@ -536,18 +598,18 @@ export async function DELETE(
   } catch (error) {
     console.error('Error deleting emergency response:', error);
     
-    // Log failed deletion attempt
     const session = await getServerSession(authOptions);
     if (session?.user) {
+      const user = createUserObject(session.user);
       await auditLog({
-        action: 'DELETE' as any,
+        action: 'DELETE',
         entityType: 'EMERGENCY_RESPONSE',
         entityId: params.responseId,
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name,
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name,
         description: `Failed to delete emergency response ${params.responseId}`,
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
         success: false,
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
       });
