@@ -1,3 +1,5 @@
+// api/dispatch/ambulances/[id]/location/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/app/lib/prisma'

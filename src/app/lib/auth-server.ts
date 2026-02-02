@@ -8,10 +8,9 @@ import {
   User, 
   UserRole, 
   createUserObject, 
-  ensureBasicPermissions 
+  ensureBasicPermissions,
+  JWT_SECRET 
 } from './auth'
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-change-in-production')
 
 // Server-only function to sign tokens
 export async function signToken(payload: any): Promise<string> {
@@ -25,7 +24,9 @@ export async function signToken(payload: any): Promise<string> {
 // Server-only function to verify tokens
 export async function verifyToken(token: string): Promise<any> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    // Remove 'Bearer ' prefix if present
+    const cleanToken = token.replace('Bearer ', '')
+    const { payload } = await jwtVerify(cleanToken, JWT_SECRET)
     return payload
   } catch {
     return null

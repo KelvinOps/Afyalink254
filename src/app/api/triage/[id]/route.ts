@@ -1,3 +1,5 @@
+//api/triage/[id]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 

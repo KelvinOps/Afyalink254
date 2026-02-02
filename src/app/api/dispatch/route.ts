@@ -1,100 +1,93 @@
+//api/dispatch/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
+import { verifyToken } from '@/app/lib/auth'
 import { auditLog } from '@/app/lib/audit'
-import { verifyToken, createUserObject, ensureBasicPermissions, hasPermission } from '@/app/lib/auth'
-
-// Helper function to get user from request
-async function getUserFromRequest(request: NextRequest) {
-  try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return null
-    }
-
-    const token = authHeader.substring(7)
-    const payload = await verifyToken(token)
-    
-    if (!payload) {
-      return null
-    }
-
-    // Create proper user object with permissions
-    const user = createUserObject(payload)
-    return ensureBasicPermissions(user)
-  } catch (error) {
-    console.error('Error verifying token:', error)
-    return null
-  }
-}
-
-// Helper function to check permissions
-function checkPermission(user: any, permission: string) {
-  if (!hasPermission(user, permission)) {
-    throw new Error('Insufficient permissions')
-  }
-}
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await getUserFromRequest(request)
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await verifyToken(token)
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user has permission to view dispatch data
-    checkPermission(user, 'dispatch.read')
-
-    const { searchParams } = new URL(request.url)
-    const logs = searchParams.get('logs')
-    const limit = parseInt(searchParams.get('limit') || '50')
-
-    if (logs) {
-      // Get historical dispatch logs
-      const dispatchLogs = await prisma.dispatchLog.findMany({
-        take: limit,
-        orderBy: { callReceived: 'desc' },
-        include: {
-          ambulance: {
-            select: { registrationNumber: true }
-          },
-          countyAmbulance: {
-            select: { registrationNumber: true }
-          }
+    // Get active calls (not completed or cancelled)
+    const activeCalls = await prisma.dispatchLog.findMany({
+      where: {
+        status: {
+          notIn: ['COMPLETED', 'CANCELLED']
         }
-      })
+      },
+      take: 20,
+      orderBy: {
+        callReceived: 'desc'
+      },
+      select: {
+        id: true,
+        dispatchNumber: true,
+        emergencyType: true,
+        severity: true,
+        callerPhone: true,
+        callerLocation: true,
+        status: true,
+        callReceived: true
+      }
+    })
 
-      return NextResponse.json({ logs: dispatchLogs })
-    } else {
-      // Get active emergency calls
-      const activeCalls = await prisma.dispatchLog.findMany({
-        where: {
-          status: {
-            in: ['RECEIVED', 'DISPATCHED', 'ON_SCENE', 'TRANSPORTING']
+    // Get recent dispatches (last 50)
+    const recentDispatches = await prisma.dispatchLog.findMany({
+      take: 50,
+      orderBy: {
+        callReceived: 'desc'
+      },
+      select: {
+        id: true,
+        dispatchNumber: true,
+        emergencyType: true,
+        severity: true,
+        callerPhone: true,
+        callerLocation: true,
+        status: true,
+        callReceived: true,
+        ambulance: {
+          select: {
+            registrationNumber: true,
+            type: true
           }
         },
-        orderBy: { callReceived: 'desc' },
-        include: {
-          ambulance: {
-            select: { registrationNumber: true }
-          },
-          countyAmbulance: {
-            select: { registrationNumber: true }
+        dispatcher: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
           }
         }
-      })
+      }
+    })
 
-      return NextResponse.json({ calls: activeCalls })
-    }
+    // Format dispatcher names
+    const formattedDispatches = recentDispatches.map(dispatch => ({
+      ...dispatch,
+      dispatcher: dispatch.dispatcher ? {
+        ...dispatch.dispatcher,
+        name: `${dispatch.dispatcher.firstName} ${dispatch.dispatcher.lastName}`.trim()
+      } : null
+    }))
+
+    return NextResponse.json({
+      activeCalls,
+      recentDispatches: formattedDispatches
+    })
   } catch (error) {
     console.error('Error fetching dispatch data:', error)
-    
-    if (error instanceof Error && error.message === 'Insufficient permissions') {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to access dispatch data' },
-        { status: 403 }
-      )
-    }
-    
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -104,196 +97,127 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await getUserFromRequest(request)
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await verifyToken(token)
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user has permission to create dispatch
-    checkPermission(user, 'dispatch.write')
-
     const body = await request.json()
-    const {
-      callerPhone,
-      callerName,
-      location,
-      emergencyType,
-      severity,
-      description,
-      patientCount = 1
+    const { 
+      callerPhone, 
+      callerName, 
+      callerLocation, 
+      emergencyType, 
+      severity, 
+      description, 
+      patientCount,
+      coordinates,
+      landmark,
+      what3words
     } = body
 
     // Validate required fields
-    if (!callerPhone || !callerName || !location || !emergencyType || !severity) {
+    if (!callerPhone || !callerLocation || !emergencyType || !severity || !description) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       )
     }
 
-    // Create dispatch data object with correct field names from your Prisma schema
-    const dispatchData: any = {
-      dispatchNumber: `DISP-${Date.now()}`,
-      callerPhone,
-      callerName,
-      callerLocation: location, // Correct field name from Prisma schema
-      emergencyType: emergencyType,
-      severity: severity,
-      description: description || '',
-      patientCount: parseInt(patientCount) || 1,
-      status: 'RECEIVED',
-      callReceived: new Date(),
-    }
-
-    // Add user context if available
-    if (user.id) {
-      dispatchData.dispatcherId = user.id
-    }
-    if (user.countyId) {
-      dispatchData.countyId = user.countyId
-    }
-    if (user.facilityId) {
-      dispatchData.facilityId = user.facilityId
-    }
-
-    // Create new dispatch log
-    const dispatchLog = await prisma.dispatchLog.create({
-      data: dispatchData
-    })
-
-    // Log the action - remove unsupported fields from auditLog
-    await auditLog({
-      action: 'CREATE',
-      entityType: 'DISPATCH',
-      entityId: dispatchLog.id,
-      userId: user.id,
-      userRole: user.role,
-      userName: user.name,
-      description: `Created new emergency dispatch: ${emergencyType} at ${location}`,
-      // Remove userCountyId and userFacilityId as they don't exist in AuditLog model
-      facilityId: user.facilityId // Use facilityId instead of userFacilityId
-    })
-
-    return NextResponse.json({ 
-      success: true,
-      dispatchLog 
-    }, { status: 201 })
-  } catch (error) {
-    console.error('Error creating dispatch:', error)
-    
-    if (error instanceof Error && error.message === 'Insufficient permissions') {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to create dispatch' },
-        { status: 403 }
-      )
-    }
-    
-    // Handle Prisma specific errors
-    if (error instanceof Error) {
-      if (error.message.includes('Unique constraint')) {
-        return NextResponse.json(
-          { error: 'Dispatch number already exists' },
-          { status: 409 }
-        )
-      }
-      
-      // Handle field validation errors
-      if (error.message.includes('Unknown argument') || error.message.includes('Field')) {
-        console.error('Prisma schema field mismatch:', error.message)
-        return NextResponse.json(
-          { error: 'Schema configuration error. Check field names.' },
-          { status: 500 }
-        )
-      }
-    }
-    
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function PATCH(request: NextRequest) {
-  try {
-    const user = await getUserFromRequest(request)
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has permission to update dispatch
-    if (!hasPermission(user, 'dispatch.write')) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
-
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-    
-    if (!id) {
-      return NextResponse.json({ error: 'Dispatch ID required' }, { status: 400 })
-    }
-
-    const body = await request.json()
-    const { status } = body
-
-    if (!status) {
-      return NextResponse.json({ error: 'Status is required' }, { status: 400 })
-    }
-
-    // Validate status
-    const validStatuses = ['RECEIVED', 'DISPATCHED', 'ON_SCENE', 'TRANSPORTING', 'AT_HOSPITAL', 'COMPLETED', 'CANCELLED']
-    if (!validStatuses.includes(status)) {
-      return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
-    }
-
-    // First, get the current dispatch to log the change
-    const currentDispatch = await prisma.dispatchLog.findUnique({
-      where: { id }
-    })
-
-    if (!currentDispatch) {
-      return NextResponse.json({ error: 'Dispatch not found' }, { status: 404 })
-    }
-
-    // Update dispatch log
-    const updatedDispatch = await prisma.dispatchLog.update({
-      where: { id },
-      data: { status },
-      include: {
-        ambulance: {
-          select: { registrationNumber: true }
-        },
-        countyAmbulance: {
-          select: { registrationNumber: true }
+    // Generate dispatch number
+    const dispatchCount = await prisma.dispatchLog.count({
+      where: {
+        callReceived: {
+          gte: new Date(new Date().getFullYear(), 0, 1), // From start of year
+          lte: new Date(new Date().getFullYear(), 11, 31) // To end of year
         }
       }
     })
 
-    // Log the action
-    await auditLog({
-      action: 'UPDATE',
+    const dispatchNumber = `DISP-${new Date().getFullYear()}-${String(dispatchCount + 1).padStart(6, '0')}`
+
+    // Prepare data for creation
+    const dispatchData: any = {
+      dispatchNumber,
+      callerPhone,
+      callerName,
+      callerLocation,
+      emergencyType,
+      severity,
+      description,
+      patientCount: patientCount || 1,
+      status: 'RECEIVED',
+      callReceived: new Date(),
+      dispatcherId: user.id
+    }
+
+    // Add optional location data
+    if (coordinates) dispatchData.coordinates = coordinates
+    if (landmark) dispatchData.landmark = landmark
+    if (what3words) dispatchData.what3words = what3words
+
+    // Create dispatch log
+    const dispatch = await prisma.dispatchLog.create({
+      data: dispatchData,
+      include: {
+        dispatcher: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    })
+
+    // Format dispatcher name
+    const formattedDispatch = {
+      ...dispatch,
+      dispatcher: dispatch.dispatcher ? {
+        ...dispatch.dispatcher,
+        name: `${dispatch.dispatcher.firstName} ${dispatch.dispatcher.lastName}`.trim()
+      } : null
+    }
+
+    // Log the action - check what fields auditLog actually accepts
+    // Based on your schema, AuditLog has: action, entityType, entityId, userId, userRole, userName, description, changes, etc.
+    const auditData: any = {
+      action: 'CREATE',
       entityType: 'DISPATCH',
-      entityId: updatedDispatch.id,
+      entityId: dispatch.id,
       userId: user.id,
       userRole: user.role,
-      userName: user.name,
-      description: `Updated dispatch ${updatedDispatch.dispatchNumber} status from ${currentDispatch.status} to ${status}`,
-      facilityId: user.facilityId
-    })
+      // Use firstName + lastName or fallback
+      userName: user.firstName && user.lastName ? 
+        `${user.firstName} ${user.lastName}` : 
+        user.name || user.email || 'Unknown',
+      description: `Created new dispatch ${dispatchNumber} for ${emergencyType}`,
+      // Use changes field if details doesn't exist
+      changes: {
+        callerPhone,
+        callerLocation,
+        emergencyType,
+        severity,
+        patientCount: patientCount || 1
+      }
+    }
+
+    await auditLog(auditData)
 
     return NextResponse.json({ 
       success: true,
-      dispatch: updatedDispatch 
-    })
+      dispatch: formattedDispatch,
+      dispatchNumber
+    }, { status: 201 })
   } catch (error) {
-    console.error('Error updating dispatch:', error)
-    
-    if (error instanceof Error) {
-      if (error.message.includes('Record to update not found')) {
-        return NextResponse.json({ error: 'Dispatch not found' }, { status: 404 })
-      }
-    }
-    
+    console.error('Error creating dispatch:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

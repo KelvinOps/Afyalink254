@@ -1,4 +1,4 @@
-// src/app/api/patients/[id]/route.ts
+// src/app/api/patients/[id]/history/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 
@@ -10,271 +10,132 @@ interface RouteParams {
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const { id } = await params // ✅ Fixed: Await params
+    const { id: patientId } = await params
 
-    const patient = await prisma.patient.findUnique({
-      where: { id },
-      include: {
-        currentHospital: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            phone: true,
-            address: true
-          }
-        },
-        triageEntries: {
-          orderBy: { arrivalTime: 'desc' },
-          include: {
-            department: {
-              select: {
-                id: true,
-                name: true,
-                type: true
-              }
-            },
-            assessedBy: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                role: true
-              }
-            }
-          }
-        },
-        transfers: {
-          orderBy: { requestedAt: 'desc' },
-          include: {
-            originHospital: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            },
-            destinationHospital: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            },
-            ambulance: {
-              select: {
-                id: true,
-                registrationNumber: true,
-                type: true
-              }
-            }
-          }
-        },
-        referrals: {
-          orderBy: { referredAt: 'desc' },
-          include: {
-            originHospital: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            },
-            destinationHospital: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            }
-          }
-        },
-        shaClaims: {
-          orderBy: { serviceDate: 'desc' },
-          include: {
-            hospital: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            }
-          }
-        },
-        emergencies: {
-          orderBy: { reportedAt: 'desc' },
-          include: {
-            county: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            }
-          }
-        }
-      }
-    })
+    console.log('Fetching patient history for:', patientId)
 
-    if (!patient) {
+    if (!patientId) {
       return NextResponse.json(
-        { error: 'Patient not found' },
-        { status: 404 }
-      )
-    }
-
-    return NextResponse.json(patient)
-
-  } catch (error) {
-    console.error('Error fetching patient:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
-  try {
-    const { id } = await params // ✅ Fixed: Await params
-    const body = await request.json()
-
-    // Check if patient exists
-    const existingPatient = await prisma.patient.findUnique({
-      where: { id }
-    })
-
-    if (!existingPatient) {
-      return NextResponse.json(
-        { error: 'Patient not found' },
-        { status: 404 }
-      )
-    }
-
-    const updatedPatient = await prisma.patient.update({
-      where: { id },
-      data: {
-        firstName: body.firstName,
-        lastName: body.lastName,
-        otherNames: body.otherNames,
-        dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : undefined,
-        gender: body.gender,
-        phone: body.phone,
-        alternatePhone: body.alternatePhone,
-        email: body.email,
-        nationalId: body.nationalId,
-        countyOfResidence: body.countyOfResidence,
-        subCounty: body.subCounty,
-        ward: body.ward,
-        village: body.village,
-        landmark: body.landmark,
-        what3words: body.what3words,
-        nextOfKinName: body.nextOfKinName,
-        nextOfKinPhone: body.nextOfKinPhone,
-        nextOfKinRelation: body.nextOfKinRelation,
-        bloodType: body.bloodType,
-        allergies: body.allergies,
-        chronicConditions: body.chronicConditions,
-        disabilities: body.disabilities,
-        shaNumber: body.shaNumber,
-        shaStatus: body.shaStatus,
-        contributionStatus: body.contributionStatus,
-        currentHospitalId: body.currentHospitalId,
-        currentStatus: body.currentStatus
-      },
-      include: {
-        currentHospital: {
-          select: {
-            id: true,
-            name: true,
-            code: true
+        { 
+          error: 'Patient ID is required',
+          triageEntries: [],
+          pagination: {
+            page: 1,
+            limit: 20,
+            totalCount: 0,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPrevPage: false
           }
-        }
-      }
-    })
-
-    // Create audit log
-    await prisma.auditLog.create({
-      data: {
-        userId: 'system',
-        userRole: 'SYSTEM',
-        userName: 'System',
-        action: 'UPDATE',
-        entityType: 'PATIENT',
-        entityId: updatedPatient.id,
-        description: `Patient updated: ${updatedPatient.firstName} ${updatedPatient.lastName}`,
-        success: true
-      }
-    })
-
-    return NextResponse.json(updatedPatient)
-
-  } catch (error) {
-    console.error('Error updating patient:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  try {
-    const { id } = await params // ✅ Fixed: Await params
-
-    // Check if patient exists
-    const existingPatient = await prisma.patient.findUnique({
-      where: { id }
-    })
-
-    if (!existingPatient) {
-      return NextResponse.json(
-        { error: 'Patient not found' },
-        { status: 404 }
-      )
-    }
-
-    // Check if patient has active records
-    const activeRecords = await prisma.triageEntry.count({
-      where: {
-        patientId: id,
-        status: {
-          in: ['WAITING', 'IN_ASSESSMENT', 'IN_TREATMENT', 'AWAITING_ADMISSION', 'AWAITING_TRANSFER']
-        }
-      }
-    })
-
-    if (activeRecords > 0) {
-      return NextResponse.json(
-        { error: 'Cannot delete patient with active medical records' },
+        },
         { status: 400 }
       )
     }
 
-    await prisma.patient.delete({
-      where: { id }
+    // Get query parameters
+    const { searchParams } = new URL(request.url)
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '20')
+
+    // Verify patient exists
+    const patientExists = await prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { id: true }
     })
 
-    // Create audit log
-    await prisma.auditLog.create({
-      data: {
-        userId: 'system',
-        userRole: 'SYSTEM',
-        userName: 'System',
-        action: 'DELETE',
-        entityType: 'PATIENT',
-        entityId: id,
-        description: `Patient deleted: ${existingPatient.firstName} ${existingPatient.lastName}`,
-        success: true
+    if (!patientExists) {
+      return NextResponse.json(
+        { 
+          error: 'Patient not found',
+          triageEntries: [],
+          pagination: {
+            page: 1,
+            limit: 20,
+            totalCount: 0,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPrevPage: false
+          }
+        },
+        { status: 404 }
+      )
+    }
+
+    const safePage = Math.max(page, 1)
+    const safeLimit = Math.min(Math.max(limit, 1), 100)
+    const skip = (safePage - 1) * safeLimit
+
+    console.log('Fetching triage entries...')
+    
+    // Fetch patient's complete medical history
+    const [triageEntries, totalCount] = await Promise.all([
+      prisma.triageEntry.findMany({
+        where: { patientId },
+        include: {
+          department: {
+            select: {
+              id: true,
+              name: true,
+              type: true
+            }
+          },
+          hospital: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              mflCode: true
+            }
+          },
+          assessedBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              role: true
+            }
+          }
+        },
+        skip,
+        take: safeLimit,
+        orderBy: { arrivalTime: 'desc' }
+      }),
+      prisma.triageEntry.count({
+        where: { patientId }
+      })
+    ])
+
+    const totalPages = Math.ceil(totalCount / safeLimit)
+
+    console.log(`Found ${triageEntries.length} entries out of ${totalCount} total`)
+
+    return NextResponse.json({
+      triageEntries,
+      pagination: {
+        page: safePage,
+        limit: safeLimit,
+        totalCount,
+        totalPages,
+        hasNextPage: safePage < totalPages,
+        hasPrevPage: safePage > 1
       }
     })
 
-    return NextResponse.json({ message: 'Patient deleted successfully' })
-
   } catch (error) {
-    console.error('Error deleting patient:', error)
+    console.error('Error fetching patient history:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        triageEntries: [],
+        pagination: {
+          page: 1,
+          limit: 20,
+          totalCount: 0,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPrevPage: false
+        }
+      },
       { status: 500 }
     )
   }

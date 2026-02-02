@@ -175,7 +175,7 @@ const navigationStructure = {
         subItems: [
           { name: 'Triage Queue', href: '/triage/queue', icon: Clock, permission: 'triage.read', roles: ['SUPER_ADMIN', 'COUNTY_ADMIN', 'HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'TRIAGE_OFFICER'] },
           { name: 'New Triage', href: '/triage/new', icon: UserPlus, permission: 'triage.write', roles: ['SUPER_ADMIN', 'HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'TRIAGE_OFFICER'] },
-          { name: 'Triage History', href: '/triage/history', icon: Clock, permission: 'triage.read', roles: ['SUPER_ADMIN', 'COUNTY_ADMIN', 'HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'TRIAGE_OFFICER'] }
+          { name: 'Triage History', href: '/triage/dashboard', icon: Clock, permission: 'triage.read', roles: ['SUPER_ADMIN', 'COUNTY_ADMIN', 'HOSPITAL_ADMIN', 'DOCTOR', 'NURSE', 'TRIAGE_OFFICER'] }
         ]
       },
       {

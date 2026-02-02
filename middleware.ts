@@ -1,5 +1,7 @@
+// middleware.ts 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { verifyToken } from './src/app/lib/auth'
 
 // Define public routes that don't require authentication
 const publicRoutes = [
@@ -21,77 +23,50 @@ const publicRoutes = [
 
 // Define API routes that are public
 const publicApiRoutes = [
-  '/api/auth/',
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/logout',
+  '/api/health',
   '/api/emergency/public/',
-  '/api/hospitals/public/',
-  '/api/health'
+  '/api/hospitals/public/'
 ]
 
-// Define role-based route access
-const roleBasedRoutes: Record<string, string[]> = {
-  admin: [
-    '/dashboard',
-    '/admin',
-    '/analytics',
-    '/system-settings',
-    '/user-management'
-  ],
-  doctor: [
-    '/dashboard',
-    '/patient-records',
-    '/telemedicine',
-    '/prescriptions'
-  ],
-  nurse: [
-    '/dashboard',
-    '/patient-care',
-    '/vitals',
-    '/medication'
-  ],
-  emergency_responder: [
-    '/dashboard',
-    '/dispatch',
-    '/emergencies',
-    '/triage'
-  ],
-  patient: [
-    '/dashboard',
-    '/my-records',
-    '/appointments',
-    '/prescriptions'
-  ],
-  staff: [
-    '/dashboard',
-    '/resources',
-    '/reports'
-  ]
+// Helper function for middleware
+function hasPermission(user: any, permission: string): boolean {
+  if (!user || !user.permissions) return false
+  
+  if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') {
+    return true
+  }
+  
+  const hasPerm = user.permissions?.includes(permission) || user.permissions?.includes('*')
+  return hasPerm
 }
 
-// Routes that require specific permissions
-const permissionRoutes: Record<string, string[]> = {
-  'manage_users': ['/admin/users', '/user-management'],
-  'view_analytics': ['/analytics', '/reports'],
-  'manage_emergencies': ['/dispatch', '/emergencies'],
-  'access_patient_data': ['/patient-records', '/medical-records']
-}
-
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  
+  // Get token from cookies (set by login/register APIs)
   const token = request.cookies.get('auth_token')?.value
   const userRole = request.cookies.get('user_role')?.value
   const userPermissions = request.cookies.get('user_permissions')?.value?.split(',') || []
+
+  console.log('🔐 Middleware check:', { pathname, hasToken: !!token, userRole })
 
   // Check if it's an API route
   const isApiRoute = pathname.startsWith('/api/')
   
   // Check if it's a public API route
-  const isPublicApiRoute = publicApiRoutes.some(route => pathname.startsWith(route))
+  const isPublicApiRoute = publicApiRoutes.some(route => 
+    pathname.startsWith(route)
+  )
 
   // Skip middleware for public routes
   if (publicRoutes.includes(pathname) || 
       publicRoutes.some(route => pathname.startsWith(route + '/')) ||
       pathname.startsWith('/_next/') ||
-      pathname.startsWith('/static/')) {
+      pathname.startsWith('/static/') ||
+      pathname.startsWith('/favicon')) {
     return NextResponse.next()
   }
 
@@ -104,8 +79,27 @@ export function middleware(request: NextRequest) {
 
     // Require authentication for protected API routes
     if (!token) {
+      console.log('❌ API request without token:', pathname)
       return NextResponse.json(
         { error: 'Unauthorized', message: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    // Verify token for API routes
+    try {
+      const user = await verifyToken(token)
+      if (!user) {
+        console.log('❌ Invalid token for API:', pathname)
+        return NextResponse.json(
+          { error: 'Unauthorized', message: 'Invalid or expired token' },
+          { status: 401 }
+        )
+      }
+    } catch (error) {
+      console.log('❌ Token verification failed:', error)
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Token verification failed' },
         { status: 401 }
       )
     }
@@ -120,12 +114,15 @@ export function middleware(request: NextRequest) {
   }
 
   // Redirect authenticated users away from auth pages
-  if (token && (pathname.startsWith('/login') || pathname.startsWith('/register'))) {
+  if (token && (pathname === '/login' || pathname === '/register')) {
+    console.log('🔀 Redirecting authenticated user from auth page to dashboard')
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
-  // Check authentication for protected routes
+  // Check authentication for protected routes (including /dashboard)
   if (!token) {
+    console.log('🔒 No token found, redirecting to login')
+    
     // Store the intended destination for redirect after login
     const response = NextResponse.redirect(new URL('/login', request.url))
     response.cookies.set('redirect_url', pathname, {
@@ -137,53 +134,95 @@ export function middleware(request: NextRequest) {
     return response
   }
 
-  // Role-based access control
-  if (userRole) {
-    const allowedRoutes = roleBasedRoutes[userRole] || []
-    const hasAccess = allowedRoutes.some(route => pathname.startsWith(route))
+  // Verify token
+  let user = null
+  try {
+    user = await verifyToken(token)
+    // Ensure permissions are set
+    if (user && !user.permissions) {
+      user.permissions = userPermissions
+    }
+  } catch (error) {
+    console.log('❌ Token verification failed:', error)
+    
+    // Clear invalid cookies and redirect to login
+    const response = NextResponse.redirect(new URL('/login', request.url))
+    response.cookies.delete('auth_token')
+    response.cookies.delete('user_role')
+    response.cookies.delete('user_permissions')
+    return response
+  }
 
-    if (!hasAccess && pathname.startsWith('/dashboard')) {
-      // User doesn't have access to this dashboard section
-      return NextResponse.redirect(new URL('/unauthorized', request.url))
+  if (!user) {
+    console.log('❌ No user found from token')
+    
+    // Clear invalid cookies and redirect to login
+    const response = NextResponse.redirect(new URL('/login', request.url))
+    response.cookies.delete('auth_token')
+    response.cookies.delete('user_role')
+    response.cookies.delete('user_permissions')
+    return response
+  }
+
+  console.log('✅ User authenticated:', { 
+    role: user.role, 
+    name: user.name,
+    permissions: user.permissions?.length || 0 
+  })
+
+  // Role-based access control for dashboard modules
+  if (pathname.startsWith('/dashboard')) {
+    // Get user's role-specific permissions
+    const userRole = user.role
+    
+    // Define which roles can access which dashboard modules
+    const roleAccess: Record<string, string[]> = {
+      'SUPER_ADMIN': ['*'],
+      'ADMIN': ['*'],
+      'COUNTY_ADMIN': ['dashboard', 'analytics', 'hospitals', 'staff', 'settings'],
+      'COUNTY_HEALTH_OFFICER': ['dashboard', 'analytics', 'hospitals', 'staff', 'settings'],
+      'HOSPITAL_ADMIN': ['dashboard', 'triage', 'patients', 'transfers', 'dispatch', 'referrals', 'resources', 'procurement', 'sha-claims', 'telemedicine', 'emergencies', 'analytics', 'staff', 'hospitals', 'settings'],
+      'FACILITY_MANAGER': ['dashboard', 'triage', 'patients', 'transfers', 'dispatch', 'referrals', 'resources', 'procurement', 'sha-claims', 'telemedicine', 'emergencies', 'analytics', 'staff', 'hospitals', 'settings'],
+      'DOCTOR': ['dashboard', 'triage', 'patients', 'transfers', 'referrals', 'telemedicine', 'emergencies'],
+      'NURSE': ['dashboard', 'triage', 'patients', 'referrals'],
+      'TRIAGE_OFFICER': ['dashboard', 'triage', 'patients'],
+      'DISPATCHER': ['dashboard', 'dispatch', 'ambulances', 'emergencies'],
+      'AMBULANCE_DRIVER': ['dashboard', 'dispatch', 'ambulances'],
+      'EMERGENCY_MANAGER': ['dashboard', 'dispatch', 'ambulances', 'emergencies'],
+      'FINANCE_OFFICER': ['dashboard', 'sha-claims', 'analytics'],
+      'LAB_TECHNICIAN': ['dashboard', 'patients'],
+      'PHARMACIST': ['dashboard', 'patients', 'resources']
     }
 
-    // Check permission-based routes
-    for (const [permission, routes] of Object.entries(permissionRoutes)) {
-      if (routes.some(route => pathname.startsWith(route)) && !userPermissions.includes(permission)) {
-        return NextResponse.redirect(new URL('/unauthorized', request.url))
-      }
+    // Get allowed modules for user's role
+    const allowedModules = roleAccess[userRole] || []
+    
+    // Check if user is trying to access a module they don't have access to
+    const currentModule = pathname.split('/')[2] || 'dashboard'
+    
+    // SUPER_ADMIN and ADMIN can access everything
+    const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN'
+    
+    if (!isAdmin && !allowedModules.includes('*') && currentModule && !allowedModules.includes(currentModule)) {
+      console.log(`🚫 Access denied: ${userRole} cannot access ${currentModule}`)
+      console.log(`📋 Allowed modules: ${allowedModules.join(', ')}`)
+      
+      // Redirect to dashboard home instead of unauthorized page
+      return NextResponse.redirect(new URL('/dashboard', request.url))
     }
   }
 
-  // Emergency mode check (if system is in emergency mode)
-  const emergencyMode = request.cookies.get('emergency_mode')?.value === 'true'
-  if (emergencyMode && !pathname.startsWith('/emergency/')) {
-    // Redirect to emergency dashboard during emergency mode
-    const isEmergencyPersonnel = ['admin', 'emergency_responder', 'doctor', 'nurse'].includes(userRole || '')
-    if (isEmergencyPersonnel && !pathname.startsWith('/dashboard/emergency')) {
-      return NextResponse.redirect(new URL('/dashboard/emergency', request.url))
-    }
-  }
-
-  // Add security headers to all responses
+  // Add user context to headers for downstream use
   const response = NextResponse.next()
-  
+  response.headers.set('x-user-id', user.id)
+  response.headers.set('x-user-role', user.role)
+  response.headers.set('x-user-email', user.email)
+
   // Security headers
   response.headers.set('X-Content-Type-Options', 'nosniff')
   response.headers.set('X-Frame-Options', 'DENY')
   response.headers.set('X-XSS-Protection', '1; mode=block')
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
-  
-  // CSP Header for additional security
-  response.headers.set(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.healthcare.go.ke;"
-  )
-
-  // Add user context to headers for downstream use
-  if (userRole) {
-    response.headers.set('x-user-role', userRole)
-  }
 
   return response
 }
@@ -195,7 +234,6 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public folder
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],

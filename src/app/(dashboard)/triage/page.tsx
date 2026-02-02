@@ -1,3 +1,6 @@
+//triage/page.tsx
+
+
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -9,13 +12,11 @@ import { Input } from '@/app/components/ui/input'
 import { 
   Search,
   Plus,
-  Filter,
   Users,
   Clock,
   AlertTriangle,
   Stethoscope,
-  Loader2,
-  ArrowUpDown
+  Loader2
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -39,11 +40,11 @@ interface TriageEntry {
     name: string
     type: string
   }
-  assessedBy: {
+  assessedBy?: {
     firstName: string
     lastName: string
   }
-  vitalSigns: {
+  vitalSigns?: {
     bp?: string
     pulse?: number
     temp?: number
@@ -53,12 +54,14 @@ interface TriageEntry {
 }
 
 // Define valid triage levels for type safety
-type TriageLevel = 'IMMEDIATE' | 'URGENT' | 'LESS_URGENT' | 'NON_URGENT'
+const VALID_TRIAGE_LEVELS = ['IMMEDIATE', 'URGENT', 'LESS_URGENT', 'NON_URGENT'] as const
+type TriageLevel = typeof VALID_TRIAGE_LEVELS[number]
 
 export default function TriageListPage() {
   const { user } = useAuth()
   const [triageEntries, setTriageEntries] = useState<TriageEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [departmentFilter, setDepartmentFilter] = useState('all')
@@ -71,16 +74,55 @@ export default function TriageListPage() {
   const fetchTriageEntries = async () => {
     try {
       setLoading(true)
+      setError(null)
       const response = await fetch('/api/triage')
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch triage entries: ${response.status}`)
+      }
+      
       const data = await response.json()
 
-      if (response.ok) {
-        setTriageEntries(data.triageEntries)
+      if (response.ok && data.triageEntries) {
+        // Validate and transform data
+        const validatedEntries = data.triageEntries.map((entry: any) => ({
+          id: entry.id || '',
+          triageNumber: entry.triageNumber || 'UNKNOWN',
+          patient: {
+            id: entry.patient?.id || '',
+            firstName: entry.patient?.firstName || 'Unknown',
+            lastName: entry.patient?.lastName || '',
+            patientNumber: entry.patient?.patientNumber || '',
+            dateOfBirth: entry.patient?.dateOfBirth || new Date().toISOString(),
+            gender: entry.patient?.gender || 'UNKNOWN'
+          },
+          triageLevel: VALID_TRIAGE_LEVELS.includes(entry.triageLevel) 
+            ? entry.triageLevel 
+            : 'NON_URGENT',
+          status: entry.status || 'WAITING',
+          chiefComplaint: entry.chiefComplaint || 'No complaint recorded',
+          arrivalTime: entry.arrivalTime || new Date().toISOString(),
+          waitingTime: typeof entry.waitingTime === 'number' ? entry.waitingTime : 0,
+          department: {
+            name: entry.department?.name || 'Unknown Department',
+            type: entry.department?.type || 'OTHER'
+          },
+          assessedBy: entry.assessedBy ? {
+            firstName: entry.assessedBy.firstName || '',
+            lastName: entry.assessedBy.lastName || ''
+          } : undefined,
+          vitalSigns: entry.vitalSigns || {}
+        }))
+        
+        setTriageEntries(validatedEntries)
       } else {
-        console.error('Error fetching triage entries:', data.error)
+        setTriageEntries([])
+        setError('No triage entries found')
       }
     } catch (error) {
       console.error('Error fetching triage entries:', error)
+      setError('Failed to load triage entries. Please try again.')
+      setTriageEntries([])
     } finally {
       setLoading(false)
     }
@@ -112,6 +154,7 @@ export default function TriageListPage() {
   }
 
   const formatWaitingTime = (minutes: number) => {
+    if (minutes < 0) minutes = 0
     if (minutes < 60) return `${minutes}m`
     const hours = Math.floor(minutes / 60)
     const mins = minutes % 60
@@ -119,14 +162,21 @@ export default function TriageListPage() {
   }
 
   const calculateAge = (dateOfBirth: string) => {
-    const birthDate = new Date(dateOfBirth)
-    const today = new Date()
-    let age = today.getFullYear() - birthDate.getFullYear()
-    const monthDiff = today.getMonth() - birthDate.getMonth()
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--
+    try {
+      const birthDate = new Date(dateOfBirth)
+      if (isNaN(birthDate.getTime())) return 0
+      
+      const today = new Date()
+      let age = today.getFullYear() - birthDate.getFullYear()
+      const monthDiff = today.getMonth() - birthDate.getMonth()
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--
+      }
+      return age
+    } catch (error) {
+      console.error('Error calculating age:', error)
+      return 0
     }
-    return age
   }
 
   const filteredEntries = triageEntries.filter(entry => {
@@ -145,24 +195,25 @@ export default function TriageListPage() {
   const sortedEntries = [...filteredEntries].sort((a, b) => {
     switch (sortBy) {
       case 'arrivalTime':
-        return new Date(b.arrivalTime).getTime() - new Date(a.arrivalTime).getTime()
+        try {
+          const aTime = new Date(a.arrivalTime).getTime()
+          const bTime = new Date(b.arrivalTime).getTime()
+          return bTime - aTime
+        } catch {
+          return 0
+        }
       case 'waitingTime':
         return b.waitingTime - a.waitingTime
       case 'triageLevel':
-        // Fixed: Use type-safe approach for triage level sorting
-        const levelOrder: Record<TriageLevel, number> = { 
+        const levelOrder: Record<string, number> = { 
           IMMEDIATE: 1, 
           URGENT: 2, 
           LESS_URGENT: 3, 
           NON_URGENT: 4 
         }
         
-        // Use type assertion for known triage levels, fallback for unknown values
-        const aLevel = a.triageLevel as TriageLevel
-        const bLevel = b.triageLevel as TriageLevel
-        
-        const aOrder = levelOrder[aLevel] || 5 // Default to lowest priority for unknown levels
-        const bOrder = levelOrder[bLevel] || 5 // Default to lowest priority for unknown levels
+        const aOrder = levelOrder[a.triageLevel] || 5
+        const bOrder = levelOrder[b.triageLevel] || 5
         
         return aOrder - bOrder
       default:
@@ -194,6 +245,12 @@ export default function TriageListPage() {
           </Link>
         </Button>
       </div>
+
+      {error && (
+        <div className="bg-destructive/10 text-destructive p-4 rounded-md">
+          {error}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -360,7 +417,7 @@ export default function TriageListPage() {
                         )}
                       </div>
 
-                      {entry.vitalSigns && (
+                      {entry.vitalSigns && Object.keys(entry.vitalSigns).length > 0 && (
                         <div className="flex flex-wrap gap-4 mt-2 text-xs">
                           {entry.vitalSigns.bp && <span>BP: {entry.vitalSigns.bp}</span>}
                           {entry.vitalSigns.pulse && <span>Pulse: {entry.vitalSigns.pulse}</span>}

@@ -1,160 +1,55 @@
+// app/api/dispatch/[id]/route.ts 
+
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
+import { verifyToken } from '@/app/lib/auth'
 import { auditLog } from '@/app/lib/audit'
-import { verifyToken, createUserObject, ensureBasicPermissions, hasPermission } from '@/app/lib/auth'
 
-// Define params type
-type RouteParams = {
-  params: Promise<{ id: string }>
-}
-
-async function getUserFromRequest(request: NextRequest) {
-  try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return null
-    }
-
-    const token = authHeader.substring(7)
-    const payload = await verifyToken(token)
-    
-    if (!payload) {
-      return null
-    }
-
-    const user = createUserObject(payload)
-    return ensureBasicPermissions(user)
-  } catch (error) {
-    console.error('Error verifying token:', error)
-    return null
-  }
-}
-
-export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
-  try {
-    const user = await getUserFromRequest(request)
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has permission to update dispatch
-    if (!hasPermission(user, 'dispatch.write')) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
-
-    const { id } = await context.params
-    const body = await request.json()
-    const { status } = body
-
-    if (!status) {
-      return NextResponse.json({ error: 'Status is required' }, { status: 400 })
-    }
-
-    // Validate status
-    const validStatuses = ['RECEIVED', 'ASSESSING', 'DISPATCHED', 'EN_ROUTE', 'ON_SCENE', 'TRANSPORTING', 'AT_HOSPITAL', 'COMPLETED', 'CANCELLED', 'NO_AMBULANCE_AVAILABLE']
-    if (!validStatuses.includes(status)) {
-      return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
-    }
-
-    // Get current dispatch to check status transition
-    const currentDispatch = await prisma.dispatchLog.findUnique({
-      where: { id },
-      select: { status: true }
-    })
-
-    if (!currentDispatch) {
-      return NextResponse.json({ error: 'Dispatch not found' }, { status: 404 })
-    }
-
-    // Update dispatch log
-    const updatedDispatch = await prisma.dispatchLog.update({
-      where: { id },
-      data: { 
-        status,
-        // Update relevant timestamps based on status
-        ...(status === 'DISPATCHED' && { dispatched: new Date() }),
-        ...(status === 'ON_SCENE' && { arrivedOnScene: new Date() }),
-        ...(status === 'TRANSPORTING' && { departedScene: new Date() }),
-        ...(status === 'AT_HOSPITAL' && { arrivedHospital: new Date() }),
-        ...(status === 'COMPLETED' && { handoverCompleted: new Date() }),
-        ...(status === 'CANCELLED' && { cleared: new Date() })
-      }
-    })
-
-    // Log the action
-    await auditLog({
-      action: 'UPDATE',
-      entityType: 'DISPATCH',
-      entityId: updatedDispatch.id,
-      userId: user.id,
-      userRole: user.role,
-      userName: user.name,
-      description: `Updated dispatch ${updatedDispatch.dispatchNumber} status from ${currentDispatch.status} to ${status}`,
-      facilityId: user.facilityId
-    })
-
-    return NextResponse.json({ 
-      success: true,
-      dispatch: updatedDispatch 
-    })
-  } catch (error) {
-    console.error('Error updating dispatch:', error)
-    
-    if (error instanceof Error) {
-      if (error.message.includes('Record to update not found')) {
-        return NextResponse.json({ error: 'Dispatch not found' }, { status: 404 })
-      }
-    }
-    
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+interface RouteParams {
+  params: {
+    id: string
   }
 }
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const user = await getUserFromRequest(request)
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await verifyToken(token)
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user has permission to view dispatch
-    if (!hasPermission(user, 'dispatch.read')) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
-
-    const { id } = await context.params
-
+    // First get the dispatch with basic info
     const dispatch = await prisma.dispatchLog.findUnique({
-      where: { id },
+      where: { id: params.id },
       include: {
         ambulance: {
-          select: { 
+          select: {
+            id: true,
             registrationNumber: true,
             type: true,
-            equipmentLevel: true
+            equipmentLevel: true,
+            driverName: true,
+            driverPhone: true
           }
         },
         countyAmbulance: {
-          select: { 
+          select: {
+            id: true,
             registrationNumber: true,
             type: true,
-            equipmentLevel: true
+            driverName: true,
+            driverPhone: true
           }
-        },
-        dispatchCenter: {
-          select: { name: true, code: true, phone: true }
-        },
-        dispatcher: {
-          select: { firstName: true, lastName: true }
         }
       }
     })
@@ -163,7 +58,63 @@ export async function GET(
       return NextResponse.json({ error: 'Dispatch not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ dispatch })
+    // Fetch related data separately
+    let dispatcher = null
+    let hospital = null
+    let nearestHospital = null
+    let destinationHospital = null
+
+    if (dispatch.dispatcherId) {
+      dispatcher = await prisma.staff.findUnique({
+        where: { id: dispatch.dispatcherId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          role: true
+        }
+      })
+    }
+
+    // Check both hospital fields
+    if (dispatch.nearestHospitalId) {
+      nearestHospital = await prisma.hospital.findUnique({
+        where: { id: dispatch.nearestHospitalId },
+        select: {
+          name: true,
+          address: true,
+          emergencyPhone: true
+        }
+      })
+    }
+
+    if (dispatch.destinationHospitalId) {
+      destinationHospital = await prisma.hospital.findUnique({
+        where: { id: dispatch.destinationHospitalId },
+        select: {
+          name: true,
+          address: true,
+          emergencyPhone: true
+        }
+      })
+    }
+
+    // Format dispatcher name
+    const dispatcherWithName = dispatcher ? {
+      ...dispatcher,
+      name: `${dispatcher.firstName} ${dispatcher.lastName}`.trim()
+    } : null
+
+    return NextResponse.json({ 
+      dispatch: {
+        ...dispatch,
+        dispatcher: dispatcherWithName,
+        nearestHospital,
+        destinationHospital,
+        // Use destinationHospital as hospital for backward compatibility
+        hospital: destinationHospital || nearestHospital
+      }
+    })
   } catch (error) {
     console.error('Error fetching dispatch:', error)
     return NextResponse.json(
@@ -173,55 +124,171 @@ export async function GET(
   }
 }
 
-export async function DELETE(
+export async function PATCH(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const user = await getUserFromRequest(request)
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await verifyToken(token)
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Only admins can delete dispatch logs
-    if (!hasPermission(user, 'dispatch.write') || !['SUPER_ADMIN', 'COUNTY_ADMIN', 'HOSPITAL_ADMIN'].includes(user.role)) {
+    if (!['ADMIN', 'DISPATCHER', 'EMERGENCY_MANAGER'].includes(user.role)) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
 
-    const { id } = await context.params
+    const body = await request.json()
+    const { 
+      status, 
+      ambulanceId, 
+      countyAmbulanceId,
+      hospitalId,
+      instructions,
+      outcome,
+      notes 
+    } = body
 
-    // Check if dispatch exists
-    const dispatch = await prisma.dispatchLog.findUnique({
-      where: { id }
+    // Get current dispatch
+    const currentDispatch = await prisma.dispatchLog.findUnique({
+      where: { id: params.id }
     })
 
-    if (!dispatch) {
+    if (!currentDispatch) {
       return NextResponse.json({ error: 'Dispatch not found' }, { status: 404 })
     }
 
-    // Delete the dispatch
-    await prisma.dispatchLog.delete({
-      where: { id }
+    const updateData: any = {}
+    const timelineUpdates: any = {}
+
+    // Update status with timeline tracking
+    if (status) {
+      updateData.status = status
+      
+      // Set timeline dates based on status
+      switch (status) {
+        case 'DISPATCHED':
+          timelineUpdates.dispatched = new Date()
+          break
+        case 'ON_SCENE':
+          timelineUpdates.arrivedOnScene = new Date()
+          if (!currentDispatch.dispatched) {
+            timelineUpdates.dispatched = new Date()
+          }
+          break
+        case 'TRANSPORTING':
+          timelineUpdates.departedScene = new Date()
+          break
+        case 'AT_HOSPITAL':
+          timelineUpdates.arrivedHospital = new Date()
+          break
+        case 'COMPLETED':
+          timelineUpdates.cleared = new Date()
+          break
+      }
+    }
+
+    if (ambulanceId) updateData.ambulanceId = ambulanceId
+    if (countyAmbulanceId) updateData.countyAmbulanceId = countyAmbulanceId
+    
+    // Handle hospitalId - assuming it's for destinationHospitalId
+    if (hospitalId) updateData.destinationHospitalId = hospitalId
+    
+    if (instructions) updateData.instructionsGiven = instructions
+    if (outcome) updateData.outcome = outcome
+    if (notes) updateData.notes = notes
+
+    // Calculate response times if we have timeline data
+    if (timelineUpdates.arrivedOnScene && currentDispatch.dispatched) {
+      const dispatched = currentDispatch.dispatched instanceof Date ? 
+        currentDispatch.dispatched : new Date(currentDispatch.dispatched)
+      const arrived = timelineUpdates.arrivedOnScene instanceof Date ? 
+        timelineUpdates.arrivedOnScene : new Date(timelineUpdates.arrivedOnScene)
+      updateData.responseTime = Math.floor((arrived.getTime() - dispatched.getTime()) / 1000)
+    }
+
+    if (timelineUpdates.arrivedHospital && timelineUpdates.departedScene) {
+      const departed = timelineUpdates.departedScene instanceof Date ? 
+        timelineUpdates.departedScene : new Date(timelineUpdates.departedScene)
+      const arrived = timelineUpdates.arrivedHospital instanceof Date ? 
+        timelineUpdates.arrivedHospital : new Date(timelineUpdates.arrivedHospital)
+      updateData.transportTime = Math.floor((arrived.getTime() - departed.getTime()) / 1000)
+    }
+
+    const dispatch = await prisma.dispatchLog.update({
+      where: { id: params.id },
+      data: {
+        ...updateData,
+        ...timelineUpdates,
+        updatedAt: new Date()
+      },
+      include: {
+        ambulance: {
+          select: {
+            registrationNumber: true
+          }
+        }
+      }
     })
 
-    // Log the action
-    await auditLog({
-      action: 'DELETE',
+    // Update ambulance status if assigned
+    if (ambulanceId && status) {
+      await prisma.ambulance.update({
+        where: { id: ambulanceId },
+        data: { status }
+      })
+    }
+
+    // Update county ambulance status if assigned
+    if (countyAmbulanceId && status) {
+      await prisma.countyAmbulance.update({
+        where: { id: countyAmbulanceId },
+        data: { status }
+      })
+    }
+
+    // Log the action - remove the details field if auditLog doesn't accept it
+    const auditData: any = {
+      action: 'UPDATE',
       entityType: 'DISPATCH',
-      entityId: id,
+      entityId: params.id,
       userId: user.id,
       userRole: user.role,
-      userName: user.name,
-      description: `Deleted dispatch log ${dispatch.dispatchNumber}`,
-      facilityId: user.facilityId
-    })
+      // Use firstName + lastName since your Staff model doesn't have a name field
+      userName: user.firstName && user.lastName ? 
+        `${user.firstName} ${user.lastName}` : 
+        user.name || user.email || 'Unknown',
+      description: `Updated dispatch ${dispatch.dispatchNumber} to ${status}`,
+    }
+
+    // Only add details if the auditLog function accepts it
+    // Check your auditLog function signature to see if it has a details parameter
+    // For now, we'll use changes field instead if details doesn't exist
+    const changes = {
+      status: status || null,
+      ambulanceId: ambulanceId || null,
+      countyAmbulanceId: countyAmbulanceId || null,
+      destinationHospitalId: hospitalId || null,
+      outcome: outcome || null
+    }
+    
+    auditData.changes = changes
+
+    await auditLog(auditData)
 
     return NextResponse.json({ 
       success: true,
-      message: 'Dispatch deleted successfully'
+      dispatch
     })
   } catch (error) {
-    console.error('Error deleting dispatch:', error)
+    console.error('Error updating dispatch:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

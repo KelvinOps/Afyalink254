@@ -1,7 +1,7 @@
-// src/app/login/page.tsx
+// src/app/(auth)/login/page.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/app/contexts/AuthContext' 
@@ -104,12 +104,12 @@ export default function LoginPage() {
   const { login, user, isInitialized } = useAuth()
   const router = useRouter()
 
-  // Redirect if already logged in
-  useState(() => {
+  // Use useEffect instead of useState for side effects
+  useEffect(() => {
     if (user && isInitialized) {
       router.push('/dashboard')
     }
-  })
+  }, [user, isInitialized, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -156,8 +156,8 @@ export default function LoginPage() {
                 <Heart className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Emergency System</h1>
-                <p className="text-sm text-gray-600">Kenya MOH</p>
+                <h1 className="text-2xl font-bold text-gray-900">AfyaLink254</h1>
+                <p className="text-sm text-gray-600">Emergency System</p>
               </div>
             </div>
 

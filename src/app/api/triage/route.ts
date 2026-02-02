@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
+import { getServerSession } from 'next-auth' // If using NextAuth
+import { authOptions } from '@/app/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const department = searchParams.get('department')
+    const hospitalId = searchParams.get('hospitalId')
     
-    // Build where conditionally without explicit typing
     const whereConditions: Record<string, any> = {}
     
     if (status && status !== 'all') {
@@ -18,6 +20,10 @@ export async function GET(request: NextRequest) {
       whereConditions.department = {
         type: department
       }
+    }
+
+    if (hospitalId) {
+      whereConditions.hospitalId = hospitalId
     }
 
     const triageEntries = await prisma.triageEntry.findMany({
@@ -35,8 +41,16 @@ export async function GET(request: NextRequest) {
         },
         department: {
           select: {
+            id: true,
             name: true,
             type: true
+          }
+        },
+        hospital: {
+          select: {
+            id: true,
+            name: true,
+            code: true
           }
         },
         assessedBy: {
@@ -51,11 +65,10 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Calculate waiting time for each entry
     const entriesWithWaitTime = triageEntries.map(entry => {
       const arrivalTime = new Date(entry.arrivalTime)
       const now = new Date()
-      const waitingTime = Math.floor((now.getTime() - arrivalTime.getTime()) / (1000 * 60)) // minutes
+      const waitingTime = Math.floor((now.getTime() - arrivalTime.getTime()) / (1000 * 60))
       
       return {
         ...entry,
@@ -64,6 +77,7 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({
+      success: true,
       triageEntries: entriesWithWaitTime
     })
 
@@ -85,44 +99,189 @@ export async function POST(request: NextRequest) {
       triageLevel,
       arrivalMode,
       departmentId,
+      hospitalId,
       vitalSigns,
       notes
     } = body
 
     // Validate required fields
-    if (!patientId || !chiefComplaint || !triageLevel) {
+    if (!patientId) {
       return NextResponse.json(
-        { error: 'Patient ID, chief complaint, and triage level are required' },
+        { error: 'Patient ID is required' },
         { status: 400 }
       )
     }
 
-    // Generate triage number
-    const triageCount = await prisma.triageEntry.count()
-    const triageNumber = `TRI-${String(triageCount + 1).padStart(6, '0')}`
+    if (!chiefComplaint || chiefComplaint.trim().length === 0) {
+      return NextResponse.json(
+        { error: 'Chief complaint is required' },
+        { status: 400 }
+      )
+    }
 
-    // Build data object conditionally
+    if (!triageLevel || !['IMMEDIATE', 'URGENT', 'LESS_URGENT', 'NON_URGENT'].includes(triageLevel)) {
+      return NextResponse.json(
+        { error: 'Valid triage level is required' },
+        { status: 400 }
+      )
+    }
+
+    // Validate hospitalId exists
+    if (!hospitalId) {
+      return NextResponse.json(
+        { error: 'Hospital ID is required' },
+        { status: 400 }
+      )
+    }
+
+    // Validate departmentId exists
+    if (!departmentId) {
+      return NextResponse.json(
+        { error: 'Department ID is required' },
+        { status: 400 }
+      )
+    }
+
+    // Verify patient exists
+    const patient = await prisma.patient.findUnique({
+      where: { id: patientId }
+    })
+
+    if (!patient) {
+      return NextResponse.json(
+        { error: 'Patient not found' },
+        { status: 404 }
+      )
+    }
+
+    // Verify hospital exists
+    const hospital = await prisma.hospital.findUnique({
+      where: { id: hospitalId }
+    })
+
+    if (!hospital) {
+      return NextResponse.json(
+        { error: 'Hospital not found' },
+        { status: 404 }
+      )
+    }
+
+    // Verify department exists in this hospital
+    const department = await prisma.department.findFirst({
+      where: {
+        id: departmentId,
+        hospitalId: hospitalId
+      }
+    })
+
+    if (!department) {
+      return NextResponse.json(
+        { error: 'Department not found or does not belong to the specified hospital' },
+        { status: 404 }
+      )
+    }
+
+    // Get or create a default system user for triage
+    let systemStaff = await prisma.staff.findFirst({
+      where: {
+        staffNumber: 'SYS-TRIAGE-001'
+      }
+    })
+
+    if (!systemStaff) {
+      // Create a system triage user if it doesn't exist
+      systemStaff = await prisma.staff.create({
+        data: {
+          staffNumber: 'SYS-TRIAGE-001',
+          firstName: 'System',
+          lastName: 'Triage',
+          email: 'triage@system.local',
+          phone: '0000000000',
+          role: 'TRIAGE_NURSE',
+          facilityType: 'HOSPITAL',
+          hospitalId: hospitalId,
+          employmentType: 'PERMANENT',
+          contractType: 'NATIONAL',
+          hireDate: new Date(),
+          isActive: true,
+          isOnDuty: true,
+          userId: 'system-triage-user'
+        }
+      })
+    }
+
+    // Generate triage number
+    const triageCount = await prisma.triageEntry.count({
+      where: {
+        hospitalId: hospitalId
+      }
+    })
+    const hospitalCode = hospital.code || 'HOSP'
+    const triageNumber = `TRI-${hospitalCode}-${String(triageCount + 1).padStart(6, '0')}`
+
+    // Determine ESI level based on triage level
+    const getEsiLevel = (level: string): number => {
+      switch (level) {
+        case 'IMMEDIATE': return 1
+        case 'URGENT': return 2
+        case 'LESS_URGENT': return 3
+        case 'NON_URGENT': return 4
+        default: return 5
+      }
+    }
+
+    // Parse vital signs with validation
+    const parseVitalSigns = (vitals: any) => {
+      if (!vitals) return {
+        bp: '',
+        pulse: 0,
+        temp: 0,
+        respRate: 0,
+        o2Sat: 0,
+        painScale: 0
+      }
+
+      return {
+        bp: vitals.bp && typeof vitals.bp === 'string' ? vitals.bp : '',
+        pulse: vitals.pulse ? parseInt(vitals.pulse) || 0 : 0,
+        temp: vitals.temp ? parseFloat(vitals.temp) || 0 : 0,
+        respRate: vitals.respRate ? parseInt(vitals.respRate) || 0 : 0,
+        o2Sat: vitals.o2Sat ? parseInt(vitals.o2Sat) || 0 : 0,
+        painScale: vitals.painScale ? parseInt(vitals.painScale) || 0 : 0
+      }
+    }
+
+    // Determine if resuscitation or immediate intervention is required
+    const requiresResuscitation = triageLevel === 'IMMEDIATE'
+    const requiresImmediateIntervention = triageLevel === 'IMMEDIATE' || triageLevel === 'URGENT'
+
+    // Build data object with safe defaults
     const baseData = {
       triageNumber,
       patientId,
-      chiefComplaint,
+      chiefComplaint: chiefComplaint.trim(),
       triageLevel,
+      esiLevel: getEsiLevel(triageLevel),
+      requiresResuscitation,
+      requiresImmediateIntervention,
       arrivalMode: arrivalMode || 'WALK_IN',
-      vitalSigns: vitalSigns || {},
+      vitalSigns: parseVitalSigns(vitalSigns),
       status: 'WAITING' as const,
-      assessedById: 'system',
+      assessedById: systemStaff.id, // Use the system staff ID
       arrivalTime: new Date(),
+      triageTime: new Date(),
+      hospitalId,
+      departmentId,
+      assessmentNotes: '',
+      presentingSymptoms: [],
+      icd10Codes: [],
+      notes: notes ? notes.trim() : ''
     }
 
-    // Add optional fields conditionally
-    const dataWithOptionalFields = {
-      ...baseData,
-      ...(departmentId && { departmentId }),
-      ...(notes && { notes })
-    }
+    console.log('Creating triage with data:', JSON.stringify(baseData, null, 2))
 
     const triageEntry = await prisma.triageEntry.create({
-      data: dataWithOptionalFields,
+      data: baseData,
       include: {
         patient: {
           select: {
@@ -133,18 +292,41 @@ export async function POST(request: NextRequest) {
         },
         department: {
           select: {
-            name: true
+            name: true,
+            type: true
+          }
+        },
+        hospital: {
+          select: {
+            name: true,
+            code: true
+          }
+        },
+        assessedBy: {
+          select: {
+            firstName: true,
+            lastName: true,
+            role: true
           }
         }
+      }
+    })
+
+    // Update patient's current status
+    await prisma.patient.update({
+      where: { id: patientId },
+      data: {
+        currentStatus: 'IN_TRIAGE',
+        currentHospitalId: hospitalId
       }
     })
 
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: 'system',
-        userRole: 'SYSTEM',
-        userName: 'Triage System',
+        userId: systemStaff.id,
+        userRole: systemStaff.role,
+        userName: `${systemStaff.firstName} ${systemStaff.lastName}`,
         action: 'CREATE',
         entityType: 'TRIAGE',
         entityId: triageEntry.id,
@@ -153,12 +335,46 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json(triageEntry)
+    return NextResponse.json({
+      success: true,
+      triageEntry,
+      message: 'Triage entry created successfully'
+    })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating triage entry:', error)
+    
+    // Provide more specific error message
+    if (error.code === 'P2003') {
+      const fieldName = error.meta?.field_name || 'Unknown field'
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Foreign key constraint failed',
+          details: `The referenced ${fieldName} does not exist. Please check your data.`,
+          field: fieldName
+        },
+        { status: 400 }
+      )
+    }
+    
+    if (error.code === 'P2002') {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Duplicate entry',
+          details: 'A triage entry with similar data already exists'
+        },
+        { status: 409 }
+      )
+    }
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        success: false,
+        error: 'Internal server error',
+        details: error.message 
+      },
       { status: 500 }
     )
   }

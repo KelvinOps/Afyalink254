@@ -16,9 +16,22 @@ import {
   MoreHorizontal,
   Phone,
   IdCard,
-  Shield
+  Shield,
+  ChevronDown,
+  FileText,
+  Table,
+  Database,
+  File
 } from 'lucide-react'
 import Link from 'next/link'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/app/components/ui/dropdown-menu'
 
 interface Patient {
   id: string
@@ -54,6 +67,7 @@ export default function PatientsPage() {
   const { user, hasPermission } = useAuth()
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
+  const [exportLoading, setExportLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [pagination, setPagination] = useState<PaginationInfo>({
@@ -102,6 +116,62 @@ export default function PatientsPage() {
   const handleStatusFilter = (status: string) => {
     setStatusFilter(status)
     fetchPatients(1, searchTerm, status)
+  }
+
+  const handleExport = async (format: 'csv' | 'xlsx' | 'json' | 'pdf') => {
+    try {
+      setExportLoading(true)
+      
+      // Build query parameters matching current filters
+      const params = new URLSearchParams({
+        format,
+        ...(searchTerm && { search: searchTerm }),
+        ...(statusFilter && { status: statusFilter }),
+        ...(user?.facilityId && { hospitalId: user.facilityId })
+      })
+
+      const response = await fetch(`/api/patients/export?${params}`)
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Export failed' }))
+        throw new Error(errorData.error || 'Export failed')
+      }
+
+      // Create blob and download
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      
+      // Set filename based on format
+      const timestamp = new Date().toISOString().split('T')[0]
+      const filters = []
+      if (searchTerm) filters.push(`search-${searchTerm.substring(0, 10)}`)
+      if (statusFilter) filters.push(`status-${statusFilter}`)
+      const filterSuffix = filters.length > 0 ? `_${filters.join('-')}` : ''
+      
+      let filename = `patients_${timestamp}${filterSuffix}`
+      if (format === 'csv') filename += '.csv'
+      else if (format === 'xlsx') filename += '.xlsx'
+      else if (format === 'json') filename += '.json'
+      else if (format === 'pdf') filename += '.pdf'
+      
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      
+      // Cleanup
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      }, 100)
+
+    } catch (error) {
+      console.error('Export error:', error)
+      alert(error instanceof Error ? error.message : 'Failed to export data. Please try again.')
+    } finally {
+      setExportLoading(false)
+    }
   }
 
   const getStatusBadge = (status: string) => {
@@ -257,10 +327,76 @@ export default function PatientsPage() {
               <Button type="submit">
                 Search
               </Button>
-              <Button variant="outline" type="button">
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
+              
+              {/* Export Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" disabled={exportLoading || loading}>
+                    {exportLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Export
+                        <ChevronDown className="w-4 h-4 ml-2" />
+                      </>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel>Export Format</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => handleExport('csv')}
+                    className="cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    Export as CSV
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      Excel compatible
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => handleExport('xlsx')}
+                    className="cursor-pointer"
+                  >
+                    <Table className="w-4 h-4 mr-2" />
+                    Export as Excel
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      .xlsx format
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => handleExport('pdf')}
+                    className="cursor-pointer"
+                  >
+                    <File className="w-4 h-4 mr-2" />
+                    Export as PDF
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      Print ready
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => handleExport('json')}
+                    className="cursor-pointer"
+                  >
+                    <Database className="w-4 h-4 mr-2" />
+                    Export as JSON
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      Raw data
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    Exports {pagination.totalCount} filtered records
+                    {searchTerm && ` • Search: "${searchTerm.substring(0, 20)}${searchTerm.length > 20 ? '...' : ''}"`}
+                    {statusFilter && ` • Status: ${statusFilter}`}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             {/* Status Filters */}
@@ -293,6 +429,8 @@ export default function PatientsPage() {
           <CardTitle>Patient Records</CardTitle>
           <CardDescription>
             {pagination.totalCount} patients found
+            {searchTerm && ` • Search: "${searchTerm}"`}
+            {statusFilter && ` • Status: ${statusFilter}`}
           </CardDescription>
         </CardHeader>
         <CardContent>

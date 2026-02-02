@@ -1,5 +1,5 @@
 // src/app/layout.tsx
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, Poppins } from 'next/font/google'
 import { AuthProvider } from './contexts/AuthContext'
 import { NotificationProvider } from './contexts/NotificationContext'
@@ -55,11 +55,15 @@ export const metadata: Metadata = {
     title: 'National Emergency Healthcare System - Kenya',
     description: 'Emergency healthcare coordination system for Kenya',
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-  },
+  // REMOVE viewport from here
+}
+
+// ADD this separate viewport export
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({

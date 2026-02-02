@@ -1,3 +1,5 @@
+//(dashboard)/triage/queue/page.tsx
+
 'use client'
 
 import { useState, useEffect } from 'react'

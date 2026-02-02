@@ -1,5 +1,4 @@
 // COMPREHENSIVE National Emergency Healthcare System - Prisma Schema
-// Prisma 7.0+ Compatible Version
 
 generator client {
   provider = "prisma-client-js"
@@ -2501,6 +2500,8 @@ model Staff {
   // Workload
   currentCaseload Int @default(0)
   maxCaseload     Int @default(10)
+  passwordHash   String?   @db.VarChar(255)
+  lastLoginAt    DateTime?
 
   // Telemedicine
   telemedicineEnabled        Boolean @default(false)
@@ -2758,10 +2759,13 @@ model TriageEntry {
   requiresImmediateIntervention Boolean @default(false)
 
   // Assessment
-  assessedById       String
-  assessedBy         Staff    @relation(fields: [assessedById], references: [id])
+  assessedById       String?  // Make it optional
+  assessedBy         Staff?    @relation(fields: [assessedById], references: [id])
   assessmentNotes    String   @db.Text
   presentingSymptoms String[]
+  
+  // Add the missing notes field here:
+  notes             String?   @db.Text // Add this line
 
   // Time Tracking
   arrivalTime        DateTime  @default(now())
