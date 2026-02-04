@@ -1,21 +1,15 @@
-// app/hooks/usePermissions.ts
+// /app/hooks/usePermissions.ts
 'use client'
 
 import { useAuth } from '@/app/contexts/AuthContext'
 import { useCallback } from 'react'
+import { hasPermission as checkPermission } from '@/app/lib/permissions'
 
 export function usePermissions() {
   const { user } = useAuth()
   
   const hasPermission = useCallback((permission: string): boolean => {
-    if (!user || !user.permissions) return false
-    
-    if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') {
-      return true
-    }
-    
-    const hasPerm = user.permissions?.includes(permission) || user.permissions?.includes('*')
-    return hasPerm
+    return checkPermission(user, permission)
   }, [user])
   
   const canAccessModule = useCallback((module: string): boolean => {

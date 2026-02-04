@@ -1,8 +1,8 @@
-// src/contexts/WebSocketContext.tsx
+//app/contextx/WebSocketContext.tsx
+
 'use client'
 
-import React, { createContext, useContext, useEffect, useRef, useReducer } from 'react'
-import { useNotification } from './NotificationContext'
+import React, { createContext, useContext, useEffect, useRef, useReducer, useCallback } from 'react'
 
 // WebSocket message types
 export type WebSocketMessageType = 
@@ -146,41 +146,43 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const ws = useRef<WebSocket | null>(null)
   const reconnectTimeout = useRef<NodeJS.Timeout | null>(null)
   
-  // Use useNotification with error handling since it might not be available
-  let addNotification: any = () => {};
-  try {
-    const notificationContext = useNotification();
-    addNotification = notificationContext.addNotification;
-  } catch (error) {
-    console.warn('NotificationContext not available, notifications disabled');
-  }
+  // Safe notification function using custom events
+  const addNotification = useCallback((notification: any) => {
+    try {
+      const event = new CustomEvent('websocket-notification', {
+        detail: notification
+      });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.warn('Failed to dispatch notification event:', error);
+    }
+  }, []);
 
   // WebSocket URL - in production, this would be from environment variables
-  const getWebSocketUrl = () => {
-    // Use environment variable if available, otherwise fallback
-    if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_WS_URL) {
+  const getWebSocketUrl = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return 'ws://localhost:3001/ws';
+    }
+
+    // Use environment variable if available
+    if (process.env.NEXT_PUBLIC_WS_URL) {
       return process.env.NEXT_PUBLIC_WS_URL;
     }
     
-    if (typeof window !== 'undefined') {
-      // Check if we're in development mode
-      const isDevelopment = process.env.NODE_ENV === 'development';
-      
-      if (isDevelopment) {
-        // For development, try local WebSocket server
-        return 'ws://localhost:3001/ws';
-      } else {
-        // For production, use secure WebSocket and current host
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${window.location.host}/api/ws`;
-      }
-    }
+    // Check if we're in development mode
+    const isDevelopment = process.env.NODE_ENV === 'development';
     
-    // Default fallback
-    return 'ws://localhost:3001/ws';
-  }
+    if (isDevelopment) {
+      // For development, try local WebSocket server
+      return 'ws://localhost:3001/ws';
+    } else {
+      // For production, use secure WebSocket and current host
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${window.location.host}/api/ws`;
+    }
+  }, [])
 
-  const connect = () => {
+  const connect = useCallback(() => {
     // Prevent multiple connection attempts
     if (state.isConnected || state.isConnecting || (ws.current && ws.current.readyState === WebSocket.CONNECTING)) {
       console.log('WebSocket connection already in progress, skipping...');
@@ -209,22 +211,24 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         
         // Resubscribe to all channels
         state.subscriptions.forEach(channel => {
-          subscribe(channel);
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            sendMessage({
+              type: 'SYSTEM_STATUS',
+              data: { action: 'subscribe', channel },
+              timestamp: new Date().toISOString()
+            });
+          }
         });
 
         // Notify connection established
-        try {
-          addNotification({
-            type: 'success',
-            title: 'Real-time Connection Established',
-            message: 'Live updates are now active',
-            priority: 'low',
-            source: 'system',
-            duration: 3000
-          });
-        } catch (error) {
-          console.log('Notification not available for connection success');
-        }
+        addNotification({
+          type: 'success',
+          title: 'Real-time Connection Established',
+          message: 'Live updates are now active',
+          priority: 'low',
+          source: 'system',
+          duration: 3000
+        });
       };
 
       ws.current.onmessage = (event) => {
@@ -253,22 +257,17 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       ws.current.onerror = (error: Event) => {
         console.error('❌ WebSocket error event:', error);
-        // The actual error details might be limited due to browser security
         dispatch({ type: 'CONNECTION_ERROR' });
         
         // Show more specific error notification
-        try {
-          addNotification({
-            type: 'error',
-            title: 'Connection Error',
-            message: 'Failed to connect to real-time updates',
-            priority: 'medium',
-            source: 'system',
-            duration: 5000
-          });
-        } catch (notifError) {
-          console.log('Notification not available for connection error');
-        }
+        addNotification({
+          type: 'error',
+          title: 'Connection Error',
+          message: 'Failed to connect to real-time updates',
+          priority: 'medium',
+          source: 'system',
+          duration: 5000
+        });
       };
 
     } catch (error) {
@@ -276,9 +275,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'CONNECTION_ERROR' });
       scheduleReconnect();
     }
-  };
+  }, [state.isConnected, state.isConnecting, state.subscriptions, getWebSocketUrl, addNotification]);
 
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     console.log('🔌 Disconnecting WebSocket...');
     
     // Clear any pending reconnect attempts
@@ -289,12 +288,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
     // Close WebSocket connection if it exists
     if (ws.current) {
-      // Remove event listeners to prevent memory leaks
-      ws.current.onopen = null;
-      ws.current.onmessage = null;
-      ws.current.onclose = null;
-      ws.current.onerror = null;
-      
       // Only close if not already closed or closing
       if (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING) {
         ws.current.close(1000, 'Manual disconnect');
@@ -303,9 +296,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     dispatch({ type: 'CONNECTION_CLOSED' });
-  };
+  }, []);
 
-  const scheduleReconnect = () => {
+  const scheduleReconnect = useCallback(() => {
     if (reconnectTimeout.current) {
       console.log('⏰ Reconnect already scheduled, skipping...');
       return;
@@ -320,9 +313,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'INCREMENT_RECONNECT_ATTEMPTS' });
       connect();
     }, delay);
-  };
+  }, [state.reconnectAttempts, connect]);
 
-  const sendMessage = (message: WebSocketMessage) => {
+  const sendMessage = useCallback((message: WebSocketMessage) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       try {
         ws.current.send(JSON.stringify(message));
@@ -332,22 +325,18 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       }
     } else {
       console.warn('⚠️ WebSocket not connected, message not sent:', message);
-      try {
-        addNotification({
-          type: 'warning',
-          title: 'Connection Issue',
-          message: 'Real-time updates temporarily unavailable',
-          priority: 'medium',
-          source: 'system',
-          duration: 5000
-        });
-      } catch (notifError) {
-        console.log('Notification not available for connection warning');
-      }
+      addNotification({
+        type: 'warning',
+        title: 'Connection Issue',
+        message: 'Real-time updates temporarily unavailable',
+        priority: 'medium',
+        source: 'system',
+        duration: 5000
+      });
     }
-  };
+  }, [addNotification]);
 
-  const subscribe = (channel: string) => {
+  const subscribe = useCallback((channel: string) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       sendMessage({
         type: 'SYSTEM_STATUS',
@@ -356,9 +345,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       });
     }
     dispatch({ type: 'ADD_SUBSCRIPTION', payload: channel });
-  };
+  }, [sendMessage]);
 
-  const unsubscribe = (channel: string) => {
+  const unsubscribe = useCallback((channel: string) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       sendMessage({
         type: 'SYSTEM_STATUS',
@@ -367,16 +356,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       });
     }
     dispatch({ type: 'REMOVE_SUBSCRIPTION', payload: channel });
-  };
+  }, [sendMessage]);
 
-  const reconnect = () => {
+  const reconnect = useCallback(() => {
     console.log('🔄 Manual reconnect triggered');
     disconnect();
     // Small delay before reconnecting to allow cleanup
     setTimeout(connect, 500);
-  };
+  }, [disconnect, connect]);
 
-  const handleIncomingMessage = (message: WebSocketMessage) => {
+  const handleIncomingMessage = useCallback((message: WebSocketMessage) => {
     console.log('📨 Handling incoming message:', message.type);
     
     try {
@@ -464,7 +453,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('❌ Error handling incoming message:', error);
     }
-  };
+  }, [addNotification]);
 
   // Auto-connect on component mount
   useEffect(() => {
@@ -479,7 +468,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       console.log('🧹 WebSocketProvider unmounting, cleaning up...');
       disconnect();
     };
-  }, []);
+  }, [connect, disconnect]);
 
   // Auto-reconnect when connection is lost
   useEffect(() => {
@@ -490,7 +479,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       console.log('🔄 Auto-reconnect triggered');
       scheduleReconnect();
     }
-  }, [state.isConnected, state.isConnecting, state.connectionStatus, state.reconnectAttempts]);
+  }, [state.isConnected, state.isConnecting, state.connectionStatus, state.reconnectAttempts, scheduleReconnect]);
 
   const value: WebSocketContextType = {
     state,

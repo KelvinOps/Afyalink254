@@ -1,122 +1,93 @@
-// app/dashboard/page.tsx
+// /app/(dashboard)/page.tsx - COMPLETE FIXED VERSION
 'use client'
 
+import { useState } from 'react'
 import { useAuth } from '@/app/contexts/AuthContext'
-import { usePermissions } from '@/app/hooks/usePermissions'
-import { useWebSocket } from '@/app/contexts/WebSocketContext'
 import { 
-  Activity, 
   Users, 
+  Ambulance, 
   AlertTriangle, 
   Clock, 
-  TrendingUp,
-  Ambulance,
-  Shield,
-  Heart,
-  Calendar,
-  FileText,
   Bell,
-  BarChart
+  Activity
 } from 'lucide-react'
-import { useState } from 'react'
+import { hasPermission } from '@/app/lib/permissions'
+import DashboardLoading from './loading'
 
-export default function DashboardPage() {
-  const { user } = useAuth()
-  const { hasPermission, canAccessModule } = usePermissions()
-  const { state } = useWebSocket()
-  const [isLoading, setIsLoading] = useState(false)
-
-  // Mock dashboard data
-  const stats = [
-    { label: 'Active Patients', value: '147', icon: Users, color: 'bg-blue-500', change: '+12' },
-    { label: 'Emergencies Today', value: '8', icon: AlertTriangle, color: 'bg-red-500', change: '-2' },
-    { label: 'Avg Response Time', value: '4.2min', icon: Clock, color: 'bg-green-500', change: '-0.8min' },
-    { label: 'System Uptime', value: '99.8%', icon: Activity, color: 'bg-purple-500', change: '+0.2%' },
-  ]
-
-  const quickActions = [
-    { label: 'New Triage', icon: Heart, path: '/dashboard/triage', permission: 'triage.write' },
-    { label: 'Ambulance Dispatch', icon: Ambulance, path: '/dashboard/dispatch', permission: 'dispatch.write' },
-    { label: 'Patient Records', icon: FileText, path: '/dashboard/patients', permission: 'patients.read' },
-    { label: 'SHA Claims', icon: Shield, path: '/dashboard/sha-claims', permission: 'claims.write' },
-    { label: 'Schedule', icon: Calendar, path: '/dashboard/schedule', permission: 'staff.read' },
-    { label: 'Analytics', icon: BarChart, path: '/dashboard/analytics', permission: 'analytics.read' },
-  ]
-
-  const recentAlerts = [
-    { id: 1, type: 'emergency', message: 'Multiple casualty incident reported in Nairobi CBD', time: '5 min ago', priority: 'high' },
-    { id: 2, type: 'warning', message: 'Ambulance #KED-004 delayed by traffic', time: '15 min ago', priority: 'medium' },
-    { id: 3, type: 'info', message: 'Kenyatta Hospital bed capacity at 85%', time: '30 min ago', priority: 'low' },
-  ]
-
-  // Filter quick actions based on permissions
-  const filteredActions = quickActions.filter(action => 
-    hasPermission(action.permission) || canAccessModule(action.path.split('/')[2])
-  )
-
+// Stats Card Component
+function StatsCard({ title, value, icon: Icon, color, trend, description }: any) {
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
-            Welcome back, {user?.firstName || user?.name.split(' ')[0] || 'User'}!
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">
-            {new Date().toLocaleDateString('en-KE', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}
-          </p>
+          <p className="text-sm text-slate-500 mb-1">{title}</p>
+          <h3 className={`text-2xl font-bold ${color}`}>{value}</h3>
         </div>
-        
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <div className={`w-3 h-3 rounded-full ${
-              state.connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 
-              state.connectionStatus === 'connecting' ? 'bg-yellow-500' : 
-              'bg-red-500'
-            }`} />
-            <span className="text-sm text-gray-600 dark:text-gray-400">
-              {state.connectionStatus === 'connected' ? 'Live' : 
-               state.connectionStatus === 'connecting' ? 'Connecting...' : 
-               'Disconnected'}
-            </span>
-          </div>
-          
-          <button className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
-            <Bell className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
+        <div className={`p-3 rounded-full ${color.replace('text-', 'bg-').replace('600', '100')}`}>
+          <Icon className={`h-6 w-6 ${color}`} />
         </div>
       </div>
+      {trend && (
+        <div className="flex items-center text-sm">
+          <span className={`font-medium ${trend.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
+            {trend}
+          </span>
+          <span className="text-slate-500 ml-2">{description}</span>
+        </div>
+      )}
+    </div>
+  )
+}
 
-      {/* Role and Facility Info */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+export default function DashboardPage() {
+  const { user, isLoading, isInitialized } = useAuth()
+  const [recentAlerts] = useState([
+    { id: 1, title: 'High Triage Queue', message: 'Over 15 patients waiting in triage', severity: 'high', time: '10 min ago' },
+    { id: 2, title: 'Ambulance En Route', message: 'AMB-004 dispatched to accident scene', severity: 'medium', time: '25 min ago' },
+    { id: 3, title: 'System Backup Complete', message: 'Nightly backup completed successfully', severity: 'low', time: '2 hours ago' },
+  ])
+
+  // Show loading during initial authentication check
+  if (isLoading || !isInitialized) {
+    return <DashboardLoading />
+  }
+
+  // Don't render anything if no user - layout will handle redirect
+  if (!user) {
+    return null
+  }
+
+  // Check permissions
+  const canViewPatients = hasPermission(user, 'patients.read')
+  const canViewTriage = hasPermission(user, 'triage.read')
+  const canViewDispatch = hasPermission(user, 'dispatch.read')
+  const canViewReports = hasPermission(user, 'reports.read')
+
+  const stats = [
+    { title: 'Active Patients', value: '42', icon: Users, color: 'text-blue-600', trend: '+5', description: 'Since yesterday' },
+    { title: 'Avg Response Time', value: '4.2 min', icon: Clock, color: 'text-green-600', trend: '-0.8 min', description: 'Improvement' },
+    { title: 'Emergencies Today', value: '8', icon: AlertTriangle, color: 'text-red-600', trend: '-2', description: 'From yesterday' },
+    { title: 'System Uptime', value: '99.8%', icon: Activity, color: 'text-purple-600', trend: '+0.2%', description: 'This month' },
+  ]
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Welcome Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-6 text-white">
+        <div className="flex flex-col md:flex-row md:items-center justify-between">
           <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Logged in as</p>
-            <p className="font-semibold text-gray-900 dark:text-white">
-              {user?.role?.replace(/_/g, ' ')} • {user?.facilityName || 'No facility assigned'}
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Permissions: {user?.permissions?.length || 0} granted
+            <h1 className="text-3xl font-bold mb-2">
+              Welcome back, {user.name}!
+            </h1>
+            <p className="text-blue-100">
+              National Emergency Healthcare System • {user.role?.replace(/_/g, ' ')}
             </p>
           </div>
-          
-          <div className="flex items-center space-x-4">
-            <div className="text-right">
-              <p className="text-sm text-gray-500 dark:text-gray-400">User ID</p>
-              <p className="font-mono text-sm text-gray-900 dark:text-white">{user?.id || 'N/A'}</p>
+          <div className="mt-4 md:mt-0">
+            <div className="inline-flex items-center bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">
+              <Bell className="h-4 w-4 mr-2" />
+              <span className="text-sm font-medium">Real-time updates active</span>
             </div>
-            {user?.facilityId && (
-              <div className="text-right">
-                <p className="text-sm text-gray-500 dark:text-gray-400">Facility ID</p>
-                <p className="font-mono text-sm text-gray-900 dark:text-white">{user.facilityId}</p>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -124,140 +95,116 @@ export default function DashboardPage() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, index) => (
-          <div key={index} className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{stat.label}</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-2">{stat.value}</p>
-                <p className={`text-xs font-semibold ${stat.change.startsWith('+') ? 'text-green-600' : 'text-red-600'} mt-1`}>
-                  {stat.change} from yesterday
-                </p>
-              </div>
-              <div className={`${stat.color} p-3 rounded-lg`}>
-                <stat.icon className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </div>
+          <StatsCard key={index} {...stat} />
         ))}
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Quick Actions */}
-        <div className="lg:col-span-2">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Quick Actions</h2>
-              <TrendingUp className="h-5 w-5 text-gray-400" />
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {filteredActions.map((action, index) => (
-                <a
-                  key={index}
-                  href={action.path}
-                  className="group flex flex-col items-center justify-center p-4 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all duration-200"
-                >
-                  <div className="p-3 rounded-lg bg-blue-100 dark:bg-blue-900/30 group-hover:bg-blue-200 dark:group-hover:bg-blue-800/40 mb-3">
-                    <action.icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <span className="font-medium text-gray-900 dark:text-white text-center">{action.label}</span>
-                </a>
-              ))}
-              
-              {filteredActions.length === 0 && (
-                <div className="col-span-full text-center py-8">
-                  <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500 dark:text-gray-400">No actions available with your current permissions</p>
-                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Contact your administrator for access</p>
+      {/* Quick Access */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h2 className="text-2xl font-bold text-slate-900 mb-6">Quick Access</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {canViewTriage && (
+            <a href="/dashboard/triage" className="p-4 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                  <span className="text-blue-600 text-xl">🚨</span>
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Alerts */}
-        <div className="lg:col-span-1">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Recent Alerts</h2>
-              <AlertTriangle className="h-5 w-5 text-red-500" />
-            </div>
-            
-            <div className="space-y-4">
-              {recentAlerts.map((alert) => (
-                <div 
-                  key={alert.id} 
-                  className={`p-4 rounded-lg border-l-4 ${
-                    alert.priority === 'high' ? 'border-l-red-500 bg-red-50 dark:bg-red-900/10' :
-                    alert.priority === 'medium' ? 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/10' :
-                    'border-l-blue-500 bg-blue-50 dark:bg-blue-900/10'
-                  }`}
-                >
-                  <p className="text-sm text-gray-900 dark:text-white font-medium">{alert.message}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{alert.time}</p>
+                <div>
+                  <h3 className="font-semibold text-slate-900">Triage</h3>
+                  <p className="text-sm text-slate-600">Patient assessment</p>
                 </div>
-              ))}
-            </div>
-            
-            <a 
-              href="/dashboard/alerts" 
-              className="block mt-6 text-center text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
-            >
-              View all alerts →
+              </div>
             </a>
-          </div>
+          )}
+          
+          {canViewPatients && (
+            <a href="/dashboard/patients" className="p-4 bg-green-50 hover:bg-green-100 rounded-lg border border-green-200 transition-colors">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                  <span className="text-green-600 text-xl">👤</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900">Patients</h3>
+                  <p className="text-sm text-slate-600">Medical records</p>
+                </div>
+              </div>
+            </a>
+          )}
+          
+          {canViewDispatch && (
+            <a href="/dashboard/dispatch" className="p-4 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <span className="text-red-600 text-xl">🚑</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900">Dispatch</h3>
+                  <p className="text-sm text-slate-600">Ambulance coordination</p>
+                </div>
+              </div>
+            </a>
+          )}
+          
+          {canViewReports && (
+            <a href="/dashboard/reports" className="p-4 bg-purple-50 hover:bg-purple-100 rounded-lg border border-purple-200 transition-colors">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <span className="text-purple-600 text-xl">📊</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900">Reports</h3>
+                  <p className="text-sm text-slate-600">Analytics & insights</p>
+                </div>
+              </div>
+            </a>
+          )}
         </div>
       </div>
 
       {/* System Status */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">System Status</h2>
-        
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h2 className="text-2xl font-bold text-slate-900 mb-6">System Status</h2>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-              <span className="font-medium text-gray-900 dark:text-white">Core Services</span>
-            </div>
-            <span className="text-green-600 dark:text-green-400 font-medium">Operational</span>
+            <span className="text-slate-700">WebSocket Connection</span>
+            <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">Active</span>
           </div>
-          
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-              <span className="font-medium text-gray-900 dark:text-white">Database</span>
-            </div>
-            <span className="text-green-600 dark:text-green-400 font-medium">Operational</span>
+            <span className="text-slate-700">Database Sync</span>
+            <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">Synced</span>
           </div>
-          
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className={`w-3 h-3 rounded-full ${
-                state.connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 
-                state.connectionStatus === 'connecting' ? 'bg-yellow-500' : 
-                'bg-red-500'
-              }`}></div>
-              <span className="font-medium text-gray-900 dark:text-white">WebSocket Connection</span>
-            </div>
-            <span className={
-              state.connectionStatus === 'connected' ? 'text-green-600 dark:text-green-400' :
-              state.connectionStatus === 'connecting' ? 'text-yellow-600 dark:text-yellow-400' :
-              'text-red-600 dark:text-red-400'
-            }>
-              {state.connectionStatus === 'connected' ? 'Connected' : 
-               state.connectionStatus === 'connecting' ? 'Connecting...' : 
-               'Disconnected'}
-            </span>
+            <span className="text-slate-700">API Response Time</span>
+            <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">124ms</span>
           </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-              <span className="font-medium text-gray-900 dark:text-white">SHA/SHIF Integration</span>
-            </div>
-            <span className="text-green-600 dark:text-green-400 font-medium">Operational</span>
+          <div className="pt-4 border-t border-slate-200">
+            <p className="text-sm text-slate-500">Last updated: Just now</p>
           </div>
+        </div>
+      </div>
+
+      {/* Recent Activity */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h2 className="text-2xl font-bold text-slate-900 mb-6">Recent Activity</h2>
+        <div className="space-y-4">
+          {recentAlerts.map((alert) => (
+            <div key={alert.id} className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+              <div className="flex items-center space-x-4">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  alert.severity === 'high' ? 'bg-red-100 text-red-600' :
+                  alert.severity === 'medium' ? 'bg-yellow-100 text-yellow-600' :
+                  'bg-blue-100 text-blue-600'
+                }`}>
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-slate-900">{alert.title}</h3>
+                  <p className="text-sm text-slate-600">{alert.message}</p>
+                </div>
+              </div>
+              <span className="text-sm text-slate-500">{alert.time}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

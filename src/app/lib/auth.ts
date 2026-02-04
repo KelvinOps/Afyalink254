@@ -1,6 +1,5 @@
-// src/app/lib/auth.ts
+// app/lib/auth.ts 
 import { jwtVerify, SignJWT } from 'jose'
-export * from './auth-options'
 
 export interface UserToken {
   id: string
@@ -35,32 +34,14 @@ export type UserRole =
   | 'EMERGENCY_MANAGER'
   | 'MEDICAL_SUPERINTENDENT'
   | 'HOSPITAL_DIRECTOR'
-  | 'DISPATCHER'
-  | 'EMERGENCY_MANAGER'
 
 // Use a consistent secret across all files
 export const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production-123456'
 )
 
-// For backward compatibility, also keep the old User interface
-export interface User extends UserToken {
-  // User interface extends UserToken
-}
-
-// Import and re-export authOptions from auth-options.ts
-let _authOptions: any = null
-
-export async function getAuthOptions() {
-  if (!_authOptions) {
-    const { authOptions } = await import('./auth-options')
-    _authOptions = authOptions
-  }
-  return _authOptions
-}
-
-// For direct import (used in API routes)
-export { authOptions } from './auth-options'
+// For backward compatibility
+export interface User extends UserToken {}
 
 export async function verifyToken(token: string): Promise<UserToken | null> {
   try {
@@ -384,3 +365,4 @@ export async function signToken(payload: any): Promise<string> {
 export async function verifyAndGetUser(token: string): Promise<UserToken | null> {
   return verifyToken(token)
 }
+

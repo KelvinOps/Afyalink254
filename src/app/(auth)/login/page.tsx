@@ -1,8 +1,8 @@
-// src/app/(auth)/login/page.tsx
+// /app/(auth)/login/page.tsx - COMPLETE FIXED VERSION
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/app/contexts/AuthContext' 
 import { 
@@ -101,15 +101,10 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
-  const { login, user, isInitialized } = useAuth()
+  const { login, user, isInitialized, isLoading: authLoading } = useAuth()
   const router = useRouter()
-
-  // Use useEffect instead of useState for side effects
-  useEffect(() => {
-    if (user && isInitialized) {
-      router.push('/dashboard')
-    }
-  }, [user, isInitialized, router])
+  const searchParams = useSearchParams()
+  const redirectUrl = searchParams.get('redirect') || '/dashboard'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -117,11 +112,13 @@ export default function LoginPage() {
     setError('')
 
     try {
+      console.log('🔐 Attempting login for:', email)
       await login(email, password)
-      // The login function will handle the redirect to dashboard
+      // The login function in AuthContext will handle the redirect via window.location.href
+      console.log('✅ Login successful, redirecting...')
     } catch (error) {
+      console.error('❌ Login error:', error)
       setError(error instanceof Error ? error.message : 'Login failed. Please check your credentials.')
-    } finally {
       setIsLoading(false)
     }
   }
@@ -132,10 +129,22 @@ export default function LoginPage() {
     setSelectedRole(demoUser.role)
   }
 
+  // Show loading during initial authentication check
+  if (authLoading || !isInitialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-slate-600">Checking authentication...</p>
+        </div>
+      </div>
+    )
+  }
+
   // Don't show login page if user is already authenticated
   if (user && isInitialized) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <p className="text-slate-600">Redirecting to dashboard...</p>

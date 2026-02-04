@@ -1,10 +1,9 @@
-// src/app/layout.tsx
+//app/layout.tsx
+
 import type { Metadata, Viewport } from 'next'
 import { Inter, Poppins } from 'next/font/google'
-import { AuthProvider } from './contexts/AuthContext'
-import { NotificationProvider } from './contexts/NotificationContext'
-import { WebSocketProvider } from './contexts/WebSocketContext'
 import './globals.css'
+import { Providers } from './Providers' 
 
 const inter = Inter({
   subsets: ['latin'],
@@ -55,10 +54,8 @@ export const metadata: Metadata = {
     title: 'National Emergency Healthcare System - Kenya',
     description: 'Emergency healthcare coordination system for Kenya',
   },
-  // REMOVE viewport from here
 }
 
-// ADD this separate viewport export
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -80,16 +77,10 @@ export default function RootLayout({
         <meta name="theme-color" content="#1e40af" />
         <meta name="emergent-care" content="true" />
       </head>
-      <body className={`${inter.className} antialiased bg-background text-foreground min-h-screen flex flex-col`}>
-        <AuthProvider>
-          <NotificationProvider>
-            <WebSocketProvider>
-              <div className="flex-1 flex flex-col">
-                {children}
-              </div>
-            </WebSocketProvider>
-          </NotificationProvider>
-        </AuthProvider>
+      <body className={`${inter.className} antialiased min-h-screen`}>
+        <Providers> {/* Wrap with Providers */}
+          {children}
+        </Providers>
       </body>
     </html>
   )

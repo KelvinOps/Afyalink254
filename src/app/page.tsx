@@ -1,4 +1,4 @@
-// src/app/page.tsx
+// app/page.tsx
 'use client'
 
 import Link from 'next/link'
@@ -16,18 +16,9 @@ import {
   Building,
   TrendingUp,
   CheckCircle,
-  ArrowRight,
-  Play,
-  Star
+  ArrowRight
 } from 'lucide-react'
-import { Button } from '@/app/components/ui/button'
-import { Badge } from '@/app/components/ui/badge'
-import { Card, CardContent } from '@/app/components/ui/card'
-import EmergencyAlertBanner from '@/app/components/emergency/EmergencyAlertBanner'
-import StatsCard from '@/app/components/dashboard/StatsCard'
-import FeatureCard from '@/app/components/home/FeatureCard'
-import EmergencyContactCard from '@/app/components/home/EmergencyContactCard'
-import SystemStatusCard from '@/app/components/home/SystemStatusCard'
+import { useRouter } from 'next/navigation' // Import useRouter
 
 // Mock data for system stats
 const systemStats = [
@@ -140,11 +131,90 @@ const footerLinks = {
   ]
 }
 
+// Define Button variant types
+type ButtonVariant = 'primary' | 'secondary' | 'outline'
+
+// Button Props Interface - UPDATED
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  children: React.ReactNode
+  onClick?: () => void
+  variant?: ButtonVariant
+  className?: string
+  as?: 'button' | 'a'
+  href?: string
+}
+
+// Simple Button Component with TypeScript - UPDATED
+const Button = ({ 
+  children, 
+  onClick, 
+  variant = 'primary',
+  className = '',
+  as = 'button',
+  href,
+  ...props 
+}: ButtonProps) => {
+  const router = useRouter()
+  
+  const baseStyles = 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
+  
+  const variants: Record<ButtonVariant, string> = {
+    primary: 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-6 py-3 shadow-lg hover:shadow-xl',
+    secondary: 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 shadow-lg hover:shadow-xl',
+    outline: 'border-2 border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-3 hover:shadow-md'
+  };
+  
+  const buttonClasses = `${baseStyles} ${variants[variant]} ${className}`;
+  
+  const handleClick = (e: React.MouseEvent) => {
+    if (href && as === 'button') {
+      e.preventDefault()
+      router.push(href)
+    }
+    onClick?.()
+  }
+  
+  if (as === 'a' && href) {
+    return (
+      <Link 
+        href={href} 
+        className={buttonClasses}
+        onClick={onClick}
+      >
+        {children}
+      </Link>
+    )
+  }
+  
+  return (
+    <button
+      className={buttonClasses}
+      onClick={handleClick}
+      {...props}
+    >
+      {children}
+    </button>
+  )
+}
+
+// Card Props Interface
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  children: React.ReactNode
+  className?: string
+}
+
+// Simple Card Component
+const Card = ({ children, className = '', ...props }: CardProps) => (
+  <div className={`bg-white rounded-lg shadow-lg hover:shadow-xl transition-shadow ${className}`} {...props}>
+    {children}
+  </div>
+)
+
 export default function HomePage() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
   const [isEmergencyMode, setIsEmergencyMode] = useState(false)
   const [isClient, setIsClient] = useState(false)
-  const [systemStatus, setSystemStatus] = useState({
+  const [systemStatus] = useState({
     operational: true,
     uptime: '99.8%',
     responseTime: '4.2min'
@@ -159,21 +229,13 @@ export default function HomePage() {
       // Simulate emergency mode during certain hours for demo
       const hour = new Date().getHours()
       setIsEmergencyMode(hour >= 8 && hour <= 20) // 8 AM to 8 PM
-      
-      // Update system status periodically
-      setSystemStatus(prev => ({
-        ...prev,
-        operational: Math.random() > 0.1, // 90% chance of being operational
-      }))
     }, 1000)
 
     return () => clearInterval(timer)
   }, [])
 
-  // Format time function that handles server/client difference
   const formatTime = (date: Date | null) => {
     if (!date) return '--:--:--'
-    
     return date.toLocaleTimeString('en-KE', { 
       hour: '2-digit', 
       minute: '2-digit',
@@ -191,15 +253,59 @@ export default function HomePage() {
     })
   }
 
+  // Emergency Alert Banner Component
+  const EmergencyAlertBanner = () => {
+    if (!isEmergencyMode) return null
+    
+    return (
+      <div className="bg-gradient-to-r from-red-600 to-red-700 text-white py-3 px-4 text-center font-semibold animate-pulse">
+        <div className="container mx-auto flex items-center justify-center space-x-3">
+          <AlertTriangle className="h-5 w-5" />
+          <span>EMERGENCY MODE ACTIVE - System operating at maximum capacity</span>
+          <AlertTriangle className="h-5 w-5" />
+        </div>
+      </div>
+    )
+  }
+
+  // System Status Card Component
+  const SystemStatusCard = () => (
+    <Card className="p-6 border-2 border-blue-200 shadow-2xl">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-bold text-gray-900">System Status</h3>
+          <p className="text-sm text-gray-600">National Emergency Network</p>
+        </div>
+        <div className={`px-3 py-1 rounded-full text-sm font-semibold ${systemStatus.operational ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          {systemStatus.operational ? 'OPERATIONAL' : 'DEGRADED'}
+        </div>
+      </div>
+      
+      <div className="space-y-4">
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm text-gray-600">Current Time (EAT)</span>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{formatTime(currentTime)}</div>
+          <div className="text-sm text-gray-500">{currentTime ? formatDate(currentTime) : ''}</div>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+          {systemStats.map((stat, index) => (
+            <div key={index} className="text-center">
+              <div className="text-xl font-bold text-gray-900">{stat.value}</div>
+              <div className="text-xs text-gray-600 mt-1">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  )
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
       {/* Emergency Alert Banner */}
-      {isEmergencyMode && (
-        <EmergencyAlertBanner 
-          title="EMERGENCY MODE ACTIVE"
-          message="System operating at maximum capacity"
-        />
-      )}
+      <EmergencyAlertBanner />
 
       {/* Hero Section */}
       <section className="relative overflow-hidden">
@@ -209,9 +315,9 @@ export default function HomePage() {
             {/* Hero Content */}
             <div className="space-y-8">
               <div className="space-y-4">
-                <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-sm px-4 py-2 font-semibold animate-pulse">
+                <div className="inline-flex items-center bg-blue-100 text-blue-800 border border-blue-200 text-sm px-4 py-2 font-semibold rounded-full animate-pulse">
                   National Emergency System
-                </Badge>
+                </div>
                 
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight">
                   Emergency Healthcare{' '}
@@ -230,42 +336,36 @@ export default function HomePage() {
 
               {/* Key Metrics */}
               <div className="grid grid-cols-2 gap-4 max-w-md">
-                <Card className="text-center p-4 border-blue-100 shadow-lg hover:shadow-xl transition-shadow">
-                  <CardContent className="p-0">
-                    <div className="text-2xl font-bold text-blue-600">47</div>
-                    <div className="text-sm text-gray-600">Counties</div>
-                  </CardContent>
+                <Card className="text-center p-4 border-blue-100">
+                  <div className="text-2xl font-bold text-blue-600">47</div>
+                  <div className="text-sm text-gray-600">Counties</div>
                 </Card>
-                <Card className="text-center p-4 border-green-100 shadow-lg hover:shadow-xl transition-shadow">
-                  <CardContent className="p-0">
-                    <div className="text-2xl font-bold text-green-600">940+</div>
-                    <div className="text-sm text-gray-600">Hospitals</div>
-                  </CardContent>
+                <Card className="text-center p-4 border-green-100">
+                  <div className="text-2xl font-bold text-green-600">940+</div>
+                  <div className="text-sm text-gray-600">Hospitals</div>
                 </Card>
               </div>
 
               {/* CTA Buttons */}
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button 
-                  className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-lg px-8 py-4 font-semibold shadow-lg hover:shadow-xl transition-all"
-                  asChild
+                  className="text-lg px-8 py-4 font-semibold"
+                  href="/login"
+                  as="a" // Use 'a' for proper Link component
                 >
-                  <Link href="/login">
-                    <Ambulance className="h-5 w-5 mr-2" />
-                    Access Emergency Dashboard
-                    <ArrowRight className="h-5 w-5 ml-2" />
-                  </Link>
+                  <Ambulance className="h-5 w-5 mr-2" />
+                  Access Emergency Dashboard
+                  <ArrowRight className="h-5 w-5 ml-2" />
                 </Button>
                 
                 <Button 
                   variant="outline" 
-                  className="text-gray-700 border-2 border-gray-300 hover:bg-gray-50 text-lg px-8 py-4 font-semibold hover:shadow-md transition-all"
-                  asChild
+                  className="text-lg px-8 py-4 font-semibold"
+                  href="/hospitals"
+                  as="a"
                 >
-                  <Link href="/hospitals">
-                    <Building className="h-5 w-5 mr-2" />
-                    Find Hospitals
-                  </Link>
+                  <Building className="h-5 w-5 mr-2" />
+                  Find Hospitals
                 </Button>
               </div>
 
@@ -286,12 +386,7 @@ export default function HomePage() {
 
             {/* Hero Visual */}
             <div className="relative">
-              <SystemStatusCard 
-                currentTime={currentTime}
-                formatTime={formatTime}
-                systemStats={systemStats}
-                isOperational={systemStatus.operational}
-              />
+              <SystemStatusCard />
             </div>
           </div>
         </div>
@@ -301,12 +396,9 @@ export default function HomePage() {
       <section className="py-20 bg-white">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <Badge 
-              variant="outline" 
-              className="border-blue-300 text-blue-700 bg-blue-50 text-sm px-4 py-2 mb-4 font-semibold animate-pulse"
-            >
+            <div className="inline-flex items-center border border-blue-300 text-blue-700 bg-blue-50 text-sm px-4 py-2 rounded-full mb-4 font-semibold">
               Comprehensive Solutions
-            </Badge>
+            </div>
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
               Addressing Kenya&apos;s Healthcare Challenges
             </h2>
@@ -317,16 +409,13 @@ export default function HomePage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             {features.map((feature, index) => (
-              <FeatureCard
-                key={index}
-                icon={feature.icon}
-                title={feature.title}
-                description={feature.description}
-                color={feature.color}
-                bgColor={feature.bgColor}
-                gradientFrom={feature.gradientFrom}
-                gradientTo={feature.gradientTo}
-              />
+              <Card key={index} className="p-6 hover:shadow-xl transition-all duration-300">
+                <div className={`w-12 h-12 rounded-full ${feature.bgColor} flex items-center justify-center mb-4`}>
+                  <feature.icon className={`h-6 w-6 ${feature.color}`} />
+                </div>
+                <h3 className={`text-lg font-bold mb-2 ${feature.color}`}>{feature.title}</h3>
+                <p className="text-gray-600">{feature.description}</p>
+              </Card>
             ))}
           </div>
         </div>
@@ -346,13 +435,14 @@ export default function HomePage() {
 
           <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
             {emergencyContacts.map((contact, index) => (
-              <EmergencyContactCard
-                key={index}
-                name={contact.name}
-                number={contact.number}
-                description={contact.description}
-                icon={contact.icon}
-              />
+              <Card key={index} className="p-6 text-center border-2 border-white/20">
+                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-4">
+                  <contact.icon className="h-6 w-6 text-white" />
+                </div>
+                <h3 className="text-xl font-bold mb-2">{contact.name}</h3>
+                <p className="text-2xl font-bold mb-2">{contact.number}</p>
+                <p className="text-blue-100">{contact.description}</p>
+              </Card>
             ))}
           </div>
 
@@ -360,24 +450,23 @@ export default function HomePage() {
           <div className="text-center mt-12">
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button 
-                className="bg-white text-blue-600 hover:bg-blue-50 text-lg px-8 py-4 font-semibold shadow-lg hover:shadow-xl transition-all"
-                asChild
+                variant="secondary"
+                className="text-lg px-8 py-4 font-semibold"
+                href="/dispatch"
+                as="a"
               >
-                <Link href="/dispatch">
-                  <Ambulance className="h-5 w-5 mr-2" />
-                  Request Ambulance
-                </Link>
+                <Ambulance className="h-5 w-5 mr-2" />
+                Request Ambulance
               </Button>
               
               <Button 
-                variant="outline" 
-                className="border-white text-white hover:bg-white/20 text-lg px-8 py-4 font-semibold hover:shadow-md transition-all"
-                asChild
+                variant="outline"
+                className="text-lg px-8 py-4 font-semibold border-white text-white hover:bg-white/20"
+                href="/emergency-info"
+                as="a"
               >
-                <Link href="/emergency-info">
-                  <AlertTriangle className="h-5 w-5 mr-2" />
-                  Emergency Procedures
-                </Link>
+                <AlertTriangle className="h-5 w-5 mr-2" />
+                Emergency Procedures
               </Button>
             </div>
           </div>
@@ -388,90 +477,22 @@ export default function HomePage() {
       <section className="py-16 bg-gray-50">
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <StatsCard
-              value="47/47"
-              label="Counties Covered"
-              color="text-blue-600"
-              icon={<MapPin className="h-8 w-8 text-blue-500 opacity-50" />}
-            />
-            <StatsCard
-              value="99.8%"
-              label="System Uptime"
-              color="text-green-600"
-              icon={<TrendingUp className="h-8 w-8 text-green-500 opacity-50" />}
-            />
-            <StatsCard
-              value="2.4M+"
-              label="Patients Served"
-              color="text-purple-600"
-              icon={<Users className="h-8 w-8 text-purple-500 opacity-50" />}
-            />
-            <StatsCard
-              value="4.2min"
-              label="Avg Response Time"
-              color="text-orange-600"
-              icon={<Clock className="h-8 w-8 text-orange-500 opacity-50" />}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 bg-gradient-to-br from-gray-900 to-gray-800 text-white">
-        <div className="container mx-auto px-4 text-center">
-          <div className="max-w-3xl mx-auto space-y-6">
-            <Badge className="bg-blue-500 text-white border-blue-600 text-sm px-4 py-2 mb-4 font-semibold">
-              Ready to Get Started?
-            </Badge>
-            
-            <h2 className="text-3xl md:text-4xl font-bold">
-              Join Kenya&apos;s Premier Emergency Healthcare Network
-            </h2>
-            
-            <p className="text-xl text-gray-300">
-              Access real-time coordination, SHA claims processing, and comprehensive emergency management tools
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-6">
-              <Button 
-                className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-lg px-8 py-4 font-semibold shadow-lg hover:shadow-xl transition-all"
-                asChild
-              >
-                <Link href="/register">
-                  <Shield className="h-5 w-5 mr-2" />
-                  Register Facility
-                  <ArrowRight className="h-5 w-5 ml-2" />
-                </Link>
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                className="border-white text-white hover:bg-white/20 text-lg px-8 py-4 font-semibold hover:shadow-md transition-all"
-                asChild
-              >
-                <Link href="/contact">
-                  <Phone className="h-5 w-5 mr-2" />
-                  Contact Support
-                </Link>
-              </Button>
-            </div>
-
-            <div className="pt-8 border-t border-gray-700">
-              <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6 text-sm text-gray-400">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>HIPAA Compliant</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>MOH Certified</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>24/7 Support</span>
-                </div>
-              </div>
-            </div>
+            <Card className="text-center p-6">
+              <div className="text-3xl font-bold text-blue-600">47/47</div>
+              <div className="text-gray-600 mt-2">Counties Covered</div>
+            </Card>
+            <Card className="text-center p-6">
+              <div className="text-3xl font-bold text-green-600">99.8%</div>
+              <div className="text-gray-600 mt-2">System Uptime</div>
+            </Card>
+            <Card className="text-center p-6">
+              <div className="text-3xl font-bold text-purple-600">2.4M+</div>
+              <div className="text-gray-600 mt-2">Patients Served</div>
+            </Card>
+            <Card className="text-center p-6">
+              <div className="text-3xl font-bold text-orange-600">4.2min</div>
+              <div className="text-gray-600 mt-2">Avg Response Time</div>
+            </Card>
           </div>
         </div>
       </section>
@@ -504,10 +525,9 @@ export default function HomePage() {
                   <li key={index}>
                     <Link 
                       href={link.href} 
-                      className="hover:text-white transition-colors duration-200 flex items-center space-x-1"
+                      className="hover:text-white transition-colors duration-200"
                     >
-                      <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <span>{link.label}</span>
+                      {link.label}
                     </Link>
                   </li>
                 ))}
@@ -522,10 +542,9 @@ export default function HomePage() {
                   <li key={index}>
                     <Link 
                       href={link.href} 
-                      className="hover:text-white transition-colors duration-200 flex items-center space-x-1"
+                      className="hover:text-white transition-colors duration-200"
                     >
-                      <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <span>{link.label}</span>
+                      {link.label}
                     </Link>
                   </li>
                 ))}

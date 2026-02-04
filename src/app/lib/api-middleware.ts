@@ -1,21 +1,10 @@
-// src/app/lib/api-middleware.ts 
+// /app/lib/api-middleware.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from './auth'
+import { hasPermission } from './permissions'
 
 export interface AuthenticatedRequest extends NextRequest {
   user?: any
-}
-
-// Helper function for middleware - EXPORT THIS
-export function hasPermission(user: any, permission: string): boolean {
-  if (!user || !user.permissions) return false
-  
-  if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') {
-    return true
-  }
-  
-  const hasPerm = user.permissions?.includes(permission) || user.permissions?.includes('*')
-  return hasPerm
 }
 
 export async function authenticateRequest(request: NextRequest): Promise<{
