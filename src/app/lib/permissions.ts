@@ -1,5 +1,8 @@
 // /app/lib/permissions.ts
-export function hasPermission(user: any, permission: string): boolean {
+import { UserToken } from '@/app/lib/auth'
+
+// Export the function properly
+export function hasPermission(user: UserToken | null, permission: string): boolean {
   if (!user || !user.permissions) return false
   
   if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') {
@@ -10,7 +13,7 @@ export function hasPermission(user: any, permission: string): boolean {
   return hasPerm
 }
 
-export function canAccessModule(user: any, module: string): boolean {
+export function canAccessModule(user: UserToken | null, module: string): boolean {
   const modulePermissions: Record<string, string[]> = {
     dashboard: ['dashboard.read', '*'],
     triage: ['triage.read', 'triage.write', '*'],

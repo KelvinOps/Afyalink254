@@ -1,9 +1,9 @@
-// /app/contexts/AuthContext.tsx - CORRECTED VERSION
+// /app/contexts/AuthContext.tsx 
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { UserToken } from '@/app/lib/auth'
+import { UserToken, hasPermission as checkHasPermission } from '@/app/lib/auth'
 
 interface AuthContextType {
   user: UserToken | null
@@ -12,6 +12,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
+  hasPermission: (permission: string) => boolean  // Add this
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -26,57 +27,59 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isInitialized, setIsInitialized] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
+  const authCheckRef = useRef(false)
 
-  const checkAuth = useCallback(async () => {
+  const checkAuth = useCallback(async (force = false) => {
+    if ((authCheckRef.current && !force) || (!force && isInitialized)) {
+      return
+    }
+
     try {
+      authCheckRef.current = true
       setIsLoading(true)
       
-      // Try to get auth status from /api/auth/me
+      console.log('🔍 Checking authentication status...')
+      
       const response = await fetch('/api/auth/me', {
-        credentials: 'include', // IMPORTANT: Include cookies
+        credentials: 'include',
+        cache: 'no-store',
       })
       
       if (response.ok) {
         const userData = await response.json()
-        console.log('✅ Auth check successful:', userData.email)
+        console.log('✅ User authenticated:', userData.email)
         setUser(userData)
       } else {
-        console.log('❌ Auth check failed:', response.status)
+        console.log('❌ No valid session found')
         setUser(null)
       }
     } catch (error) {
-      console.error('Auth check failed:', error)
+      console.error('Auth check error:', error)
       setUser(null)
     } finally {
       setIsLoading(false)
       setIsInitialized(true)
+      authCheckRef.current = false
     }
-  }, [])
+  }, [isInitialized])
 
   useEffect(() => {
-    checkAuth()
-  }, [checkAuth])
+    if (!isInitialized) {
+      checkAuth()
+    }
+  }, [checkAuth, isInitialized])
 
-  // Handle redirection
   useEffect(() => {
     if (!isInitialized || isLoading) return
 
-    const publicPaths = ['/', '/login', '/register', '/forgot-password']
-    const isPublicPath = publicPaths.includes(pathname) || 
-                        pathname?.startsWith('/api/auth/') ||
-                        pathname?.includes('.') // Skip files
+    const publicPaths = ['/', '/login', '/register', '/forgot-password', '/unauthorized']
+    const isPublicPath = publicPaths.includes(pathname || '') || 
+                        pathname?.startsWith('/api/') ||
+                        pathname?.includes('.')
 
-    if (!user && !isPublicPath && pathname !== '/login') {
-      console.log('🔒 Redirecting to login from:', pathname)
-      // Add small delay to ensure any pending state updates complete
-      setTimeout(() => {
-        router.push('/login')
-      }, 100)
-    } else if (user && (pathname === '/login' || pathname === '/register')) {
-      console.log('🔀 Redirecting to dashboard from auth page')
-      setTimeout(() => {
-        router.push('/dashboard')
-      }, 100)
+    if (pathname && !isPublicPath && !user && isInitialized && !isLoading) {
+      console.log('🔒 Redirecting to login from protected route:', pathname)
+      router.replace(`/login?redirect=${encodeURIComponent(pathname)}`)
     }
   }, [user, isLoading, isInitialized, pathname, router])
 
@@ -84,7 +87,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setIsLoading(true)
       
-      console.log('🔐 Attempting login for:', email)
+      console.log('🔐 Logging in:', email)
       
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -92,26 +95,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ email, password }),
-        credentials: 'include', // IMPORTANT: This ensures cookies are sent/received
+        credentials: 'include',
       })
 
       if (!response.ok) {
         const error = await response.json()
-        console.log('❌ Login failed:', error)
         throw new Error(error.error || 'Login failed')
       }
 
       const data = await response.json()
-      console.log('✅ Login successful for:', data.user.email)
+      console.log('✅ Login successful')
       
-      // Update user state immediately
       setUser(data.user)
       
-      // Wait a moment for cookies to be properly set
-      await new Promise(resolve => setTimeout(resolve, 100))
-      
-      // Force a page refresh to ensure all cookies are loaded
-      // This is more reliable than client-side redirect for auth state
       window.location.href = '/dashboard'
       
     } catch (error) {
@@ -131,22 +127,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
         credentials: 'include'
       })
       
-      // Clear local state
       setUser(null)
-      
-      // Redirect to login
-      window.location.href = '/login'
+      window.location.href = '/'
     } catch (error) {
       console.error('Logout error:', error)
-      // Still redirect to login even if API call fails
       setUser(null)
-      window.location.href = '/login'
+      window.location.href = '/'
     }
   }
 
   const refreshUser = async () => {
-    await checkAuth()
+    await checkAuth(true)
   }
+
+  // CRITICAL FIX: Add hasPermission function to context
+  const hasPermission = useCallback((permission: string): boolean => {
+    if (!user) return false
+    return checkHasPermission(user, permission)
+  }, [user])
 
   const value = {
     user,
@@ -155,6 +153,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     login,
     logout,
     refreshUser,
+    hasPermission,  
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
