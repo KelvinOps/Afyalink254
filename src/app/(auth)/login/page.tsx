@@ -16,7 +16,10 @@ import {
   AlertTriangle,
   Heart,
   Lock,
-  Mail
+  Mail,
+  ClipboardList,
+  Activity,
+  BriefcaseMedical
 } from 'lucide-react'
 
 // Move demo users outside component to prevent recreation
@@ -31,6 +34,24 @@ const DEMO_USERS = [
     color: 'from-purple-500 to-purple-600'
   },
   { 
+    email: 'countyadmin@health.go.ke', 
+    password: 'demo123', 
+    role: 'COUNTY_ADMIN', 
+    name: 'County Administrator',
+    icon: MapPin,
+    description: 'County-level management and oversight',
+    color: 'from-indigo-500 to-indigo-600'
+  },
+  { 
+    email: 'hospitaladmin@health.go.ke', 
+    password: 'demo123', 
+    role: 'HOSPITAL_ADMIN', 
+    name: 'Hospital Administrator',
+    icon: Building,
+    description: 'Hospital operations and resource management',
+    color: 'from-blue-500 to-blue-600'
+  },
+  { 
     email: 'doctor@health.go.ke', 
     password: 'demo123', 
     role: 'DOCTOR', 
@@ -38,6 +59,42 @@ const DEMO_USERS = [
     icon: Stethoscope,
     description: 'Patient care and medical operations',
     color: 'from-teal-500 to-teal-600'
+  },
+  { 
+    email: 'nurse@health.go.ke', 
+    password: 'demo123', 
+    role: 'NURSE', 
+    name: 'Nursing Staff',
+    icon: Activity,
+    description: 'Patient care and clinical support',
+    color: 'from-emerald-500 to-emerald-600'
+  },
+  { 
+    email: 'triage@health.go.ke', 
+    password: 'demo123', 
+    role: 'TRIAGE_OFFICER', 
+    name: 'Triage Officer',
+    icon: ClipboardList,
+    description: 'Patient assessment and prioritization',
+    color: 'from-amber-500 to-amber-600'
+  },
+  { 
+    email: 'dispatch@health.go.ke', 
+    password: 'demo123', 
+    role: 'DISPATCH_COORDINATOR', 
+    name: 'Dispatch Coordinator',
+    icon: Phone,
+    description: 'Emergency response coordination',
+    color: 'from-orange-500 to-orange-600'
+  },
+  { 
+    email: 'ambulance@health.go.ke', 
+    password: 'demo123', 
+    role: 'AMBULANCE_CREW', 
+    name: 'Ambulance Crew',
+    icon: Ambulance,
+    description: 'Emergency transport and field care',
+    color: 'from-red-500 to-red-600'
   },
 ]
 

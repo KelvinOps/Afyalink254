@@ -23,12 +23,13 @@ export type UserRole =
   | 'NURSE'
   | 'TRIAGE_OFFICER'
   | 'DISPATCHER'
+  | 'DISPATCH_COORDINATOR'
   | 'AMBULANCE_DRIVER'
+  | 'AMBULANCE_CREW'
   | 'FINANCE_OFFICER'
   | 'LAB_TECHNICIAN'
   | 'PHARMACIST'
   | 'ADMIN'
-  | 'HOSPITAL_ADMIN'
   | 'FACILITY_MANAGER'
   | 'COUNTY_HEALTH_OFFICER'
   | 'EMERGENCY_MANAGER'
@@ -100,14 +101,35 @@ export async function createToken(user: UserToken): Promise<string> {
 }
 
 // Client-safe utility functions - EXPORT hasPermission
-export function hasPermission(user: UserToken, permission: string): boolean {
-  if (!user || !user.permissions) return false
+export function hasPermission(user: UserToken | null, permission: string): boolean {
+  if (!user || !user.permissions) {
+    console.log('❌ hasPermission: No user or no permissions array')
+    return false
+  }
   
-  if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') {
+  // Normalize role for admin checks
+  const normalizedRole = normalizeRole(user.role)
+  
+  // SUPER_ADMIN and ADMIN have all permissions
+  if (normalizedRole === 'SUPER_ADMIN' || normalizedRole === 'ADMIN') {
+    console.log('✅ hasPermission: Admin role, granting all permissions')
     return true
   }
   
-  const hasPerm = user.permissions?.includes(permission) || user.permissions?.includes('*')
+  // Check for wildcard permission
+  if (user.permissions.includes('*')) {
+    console.log('✅ hasPermission: User has wildcard permission')
+    return true
+  }
+  
+  const hasPerm = user.permissions.includes(permission)
+  
+  if (!hasPerm) {
+    console.log(`❌ hasPermission: User lacks "${permission}". Has:`, user.permissions.slice(0, 5))
+  } else {
+    console.log(`✅ hasPermission: User has "${permission}"`)
+  }
+  
   return hasPerm
 }
 
@@ -118,13 +140,13 @@ export function canAccessModule(user: UserToken, module: string): boolean {
     patients: ['patients.read', 'patients.write', '*'],
     transfers: ['transfers.read', 'transfers.write', '*'],
     dispatch: ['dispatch.read', 'dispatch.write', '*'],
-    ambulances: ['dispatch.read', 'dispatch.write', 'ambulances.read', 'ambulances.write', '*'],
+    ambulances: ['ambulances.read', 'ambulances.write', '*'],
+    emergencies: ['emergencies.read', 'emergencies.write', '*'],
     referrals: ['referrals.read', 'referrals.write', '*'],
     resources: ['resources.read', 'resources.write', '*'],
     procurement: ['procurement.read', 'procurement.write', '*'],
     'sha-claims': ['claims.read', 'claims.write', '*'],
     telemedicine: ['telemedicine.read', 'telemedicine.write', '*'],
-    emergencies: ['emergencies.read', 'emergencies.write', '*'],
     analytics: ['analytics.read', '*'],
     staff: ['staff.read', 'staff.write', '*'],
     hospitals: ['hospitals.read', '*'],
@@ -136,88 +158,390 @@ export function canAccessModule(user: UserToken, module: string): boolean {
   return modulePerms.some(perm => hasPermission(user, perm))
 }
 
+// ALL PERMISSIONS - Complete list for admins
+const ALL_PERMISSIONS = [
+  // Dashboard
+  'dashboard.read',
+  
+  // Triage
+  'triage.read',
+  'triage.write',
+  
+  // Patients
+  'patients.read',
+  'patients.write',
+  
+  // Transfers
+  'transfers.read',
+  'transfers.write',
+  
+  // Dispatch
+  'dispatch.read',
+  'dispatch.write',
+  
+  // Ambulances
+  'ambulances.read',
+  'ambulances.write',
+  
+  // Emergencies
+  'emergencies.read',
+  'emergencies.write',
+  
+  // Referrals
+  'referrals.read',
+  'referrals.write',
+  
+  // Resources
+  'resources.read',
+  'resources.write',
+  
+  // Procurement
+  'procurement.read',
+  'procurement.write',
+  
+  // Claims
+  'claims.read',
+  'claims.write',
+  
+  // Telemedicine
+  'telemedicine.read',
+  'telemedicine.write',
+  
+  // Analytics
+  'analytics.read',
+  
+  // Staff
+  'staff.read',
+  'staff.write',
+  
+  // Hospitals
+  'hospitals.read',
+  'hospitals.write',
+  
+  // Settings
+  'settings.read',
+  'settings.write',
+  
+  // Monitoring
+  'monitoring.read',
+  'monitoring.write',
+  
+  // Audit
+  'audit.read',
+  
+  // System
+  'system.read',
+  'system.write',
+  
+  // Wildcard for future permissions
+  '*'
+]
+
+// COMPLETE permissions for all roles
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
-  SUPER_ADMIN: ['*'],
-  ADMIN: ['*'],
+  // SUPER_ADMIN gets ALL explicit permissions
+  SUPER_ADMIN: ALL_PERMISSIONS,
+  
+  // ADMIN gets ALL explicit permissions
+  ADMIN: ALL_PERMISSIONS,
+  
   COUNTY_ADMIN: [
-    'dashboard.read', 'triage.read', 'patients.read', 'transfers.read', 'transfers.write',
-    'dispatch.read', 'referrals.read', 'resources.read', 'procurement.read', 'procurement.write',
-    'claims.read', 'telemedicine.read', 'emergencies.read', 'emergencies.write',
-    'analytics.read', 'staff.read', 'hospitals.read', 'settings.read'
+    'dashboard.read', 
+    'triage.read', 
+    'patients.read', 
+    'transfers.read', 
+    'transfers.write',
+    'dispatch.read', 
+    'dispatch.write',
+    'ambulances.read',
+    'ambulances.write',
+    'emergencies.read',
+    'emergencies.write',
+    'referrals.read', 
+    'referrals.write',
+    'resources.read',
+    'resources.write', 
+    'procurement.read', 
+    'procurement.write',
+    'claims.read',
+    'claims.write', 
+    'telemedicine.read', 
+    'analytics.read', 
+    'staff.read', 
+    'staff.write',
+    'hospitals.read',
+    'hospitals.write', 
+    'settings.read',
+    'monitoring.read',
+    'audit.read'
   ],
+  
   COUNTY_HEALTH_OFFICER: [
-    'dashboard.read', 'triage.read', 'patients.read', 'transfers.read', 'transfers.write',
-    'dispatch.read', 'referrals.read', 'resources.read', 'procurement.read', 'procurement.write',
-    'claims.read', 'telemedicine.read', 'emergencies.read', 'emergencies.write',
-    'analytics.read', 'staff.read', 'hospitals.read', 'settings.read'
+    'dashboard.read', 
+    'triage.read', 
+    'patients.read', 
+    'transfers.read', 
+    'transfers.write',
+    'dispatch.read', 
+    'dispatch.write',
+    'ambulances.read',
+    'emergencies.read',
+    'emergencies.write',
+    'referrals.read', 
+    'referrals.write',
+    'resources.read', 
+    'procurement.read', 
+    'procurement.write',
+    'claims.read', 
+    'telemedicine.read', 
+    'analytics.read', 
+    'staff.read', 
+    'hospitals.read', 
+    'settings.read',
+    'monitoring.read'
   ],
+  
   HOSPITAL_ADMIN: [
-    'dashboard.read', 'triage.read', 'triage.write', 'patients.read', 'patients.write',
-    'transfers.read', 'transfers.write', 'dispatch.read', 'referrals.read', 'referrals.write',
-    'resources.read', 'resources.write', 'procurement.read', 'procurement.write',
-    'claims.read', 'claims.write', 'telemedicine.read', 'telemedicine.write',
-    'emergencies.read', 'emergencies.write', 'analytics.read', 'staff.read', 'staff.write',
-    'hospitals.read', 'settings.read'
+    'dashboard.read', 
+    'triage.read', 
+    'triage.write', 
+    'patients.read', 
+    'patients.write',
+    'transfers.read', 
+    'transfers.write', 
+    'dispatch.read', 
+    'dispatch.write',
+    'ambulances.read',
+    'ambulances.write',
+    'emergencies.read',
+    'emergencies.write',
+    'referrals.read', 
+    'referrals.write',
+    'resources.read', 
+    'resources.write', 
+    'procurement.read', 
+    'procurement.write',
+    'claims.read', 
+    'claims.write', 
+    'telemedicine.read', 
+    'telemedicine.write',
+    'analytics.read', 
+    'staff.read', 
+    'staff.write',
+    'hospitals.read', 
+    'settings.read',
+    'monitoring.read'
   ],
+  
   FACILITY_MANAGER: [
-    'dashboard.read', 'triage.read', 'triage.write', 'patients.read', 'patients.write',
-    'transfers.read', 'transfers.write', 'dispatch.read', 'referrals.read', 'referrals.write',
-    'resources.read', 'resources.write', 'procurement.read', 'procurement.write',
-    'claims.read', 'claims.write', 'telemedicine.read', 'telemedicine.write',
-    'emergencies.read', 'emergencies.write', 'analytics.read', 'staff.read', 'staff.write',
-    'hospitals.read', 'settings.read'
+    'dashboard.read', 
+    'triage.read', 
+    'triage.write', 
+    'patients.read', 
+    'patients.write',
+    'transfers.read', 
+    'transfers.write', 
+    'dispatch.read', 
+    'dispatch.write',
+    'ambulances.read',
+    'emergencies.read',
+    'emergencies.write',
+    'referrals.read', 
+    'referrals.write',
+    'resources.read', 
+    'resources.write', 
+    'procurement.read', 
+    'procurement.write',
+    'claims.read', 
+    'claims.write', 
+    'telemedicine.read', 
+    'telemedicine.write',
+    'analytics.read', 
+    'staff.read', 
+    'staff.write',
+    'hospitals.read', 
+    'settings.read'
   ],
+  
   DOCTOR: [
-    'dashboard.read', 'triage.read', 'patients.read', 'patients.write', 'transfers.read',
-    'referrals.read', 'referrals.write', 'telemedicine.read', 'telemedicine.write',
-    'emergencies.read'
+    'dashboard.read', 
+    'triage.read', 
+    'patients.read', 
+    'patients.write', 
+    'transfers.read',
+    'transfers.write',
+    'referrals.read', 
+    'referrals.write', 
+    'telemedicine.read', 
+    'telemedicine.write',
+    'emergencies.read',
+    'settings.read'
   ],
+  
   NURSE: [
-    'dashboard.read', 'triage.read', 'triage.write', 'patients.read', 'patients.write',
-    'referrals.read'
+    'dashboard.read', 
+    'triage.read', 
+    'triage.write', 
+    'patients.read', 
+    'patients.write',
+    'referrals.read',
+    'settings.read'
   ],
+  
   TRIAGE_OFFICER: [
-    'dashboard.read', 'triage.read', 'triage.write', 'patients.read', 'patients.write'
+    'dashboard.read', 
+    'triage.read', 
+    'triage.write', 
+    'patients.read', 
+    'patients.write',
+    'settings.read'
   ],
+  
   DISPATCHER: [
-    'dashboard.read', 'dispatch.read', 'dispatch.write', 'ambulances.read', 'ambulances.write',
-    'emergencies.read', 'emergencies.write'
+    'dashboard.read', 
+    'dispatch.read', 
+    'dispatch.write', 
+    'ambulances.read', 
+    'ambulances.write',
+    'emergencies.read', 
+    'emergencies.write',
+    'transfers.read',
+    'referrals.read',
+    'settings.read'
   ],
+  
+  DISPATCH_COORDINATOR: [
+    'dashboard.read', 
+    'dispatch.read', 
+    'dispatch.write', 
+    'ambulances.read', 
+    'ambulances.write',
+    'emergencies.read', 
+    'emergencies.write',
+    'transfers.read',
+    'referrals.read',
+    'settings.read'
+  ],
+  
   AMBULANCE_DRIVER: [
-    'dashboard.read', 'dispatch.read', 'ambulances.read'
+    'dashboard.read', 
+    'dispatch.read', 
+    'ambulances.read',
+    'emergencies.read',
+    'transfers.read',
+    'referrals.read',
+    'settings.read'
   ],
+  
+  AMBULANCE_CREW: [
+    'dashboard.read', 
+    'dispatch.read', 
+    'ambulances.read',
+    'emergencies.read',
+    'transfers.read',
+    'referrals.read',
+    'settings.read'
+  ],
+  
   EMERGENCY_MANAGER: [
-    'dashboard.read', 'dispatch.read', 'dispatch.write', 'ambulances.read', 'ambulances.write',
-    'emergencies.read', 'emergencies.write'
+    'dashboard.read', 
+    'dispatch.read', 
+    'dispatch.write', 
+    'ambulances.read', 
+    'ambulances.write',
+    'emergencies.read', 
+    'emergencies.write',
+    'transfers.read',
+    'referrals.read',
+    'analytics.read',
+    'settings.read'
   ],
+  
   FINANCE_OFFICER: [
-    'dashboard.read', 'claims.read', 'claims.write', 'analytics.read'
+    'dashboard.read', 
+    'claims.read', 
+    'claims.write', 
+    'analytics.read',
+    'settings.read'
   ],
+  
   LAB_TECHNICIAN: [
-    'dashboard.read', 'patients.read'
+    'dashboard.read', 
+    'patients.read',
+    'settings.read'
   ],
+  
   PHARMACIST: [
-    'dashboard.read', 'patients.read', 'resources.read'
+    'dashboard.read', 
+    'patients.read', 
+    'resources.read',
+    'settings.read'
   ],
+  
   MEDICAL_SUPERINTENDENT: [
-    'dashboard.read', 'triage.read', 'triage.write', 'patients.read', 'patients.write',
-    'transfers.read', 'transfers.write', 'dispatch.read', 'referrals.read', 'referrals.write',
-    'resources.read', 'resources.write', 'procurement.read', 'procurement.write',
-    'claims.read', 'claims.write', 'telemedicine.read', 'telemedicine.write',
-    'emergencies.read', 'emergencies.write', 'analytics.read', 'staff.read', 'staff.write',
-    'hospitals.read', 'settings.read'
+    'dashboard.read', 
+    'triage.read', 
+    'triage.write', 
+    'patients.read', 
+    'patients.write',
+    'transfers.read', 
+    'transfers.write', 
+    'dispatch.read', 
+    'dispatch.write',
+    'ambulances.read',
+    'emergencies.read',
+    'emergencies.write',
+    'referrals.read', 
+    'referrals.write',
+    'resources.read', 
+    'resources.write', 
+    'procurement.read', 
+    'procurement.write',
+    'claims.read', 
+    'claims.write', 
+    'telemedicine.read', 
+    'telemedicine.write',
+    'analytics.read', 
+    'staff.read', 
+    'staff.write',
+    'hospitals.read', 
+    'settings.read'
   ],
+  
   HOSPITAL_DIRECTOR: [
-    'dashboard.read', 'triage.read', 'triage.write', 'patients.read', 'patients.write',
-    'transfers.read', 'transfers.write', 'dispatch.read', 'referrals.read', 'referrals.write',
-    'resources.read', 'resources.write', 'procurement.read', 'procurement.write',
-    'claims.read', 'claims.write', 'telemedicine.read', 'telemedicine.write',
-    'emergencies.read', 'emergencies.write', 'analytics.read', 'staff.read', 'staff.write',
-    'hospitals.read', 'settings.read'
+    'dashboard.read', 
+    'triage.read', 
+    'triage.write', 
+    'patients.read', 
+    'patients.write',
+    'transfers.read', 
+    'transfers.write', 
+    'dispatch.read', 
+    'dispatch.write',
+    'ambulances.read',
+    'emergencies.read',
+    'emergencies.write',
+    'referrals.read', 
+    'referrals.write',
+    'resources.read', 
+    'resources.write', 
+    'procurement.read', 
+    'procurement.write',
+    'claims.read', 
+    'claims.write', 
+    'telemedicine.read', 
+    'telemedicine.write',
+    'analytics.read', 
+    'staff.read', 
+    'staff.write',
+    'hospitals.read', 
+    'settings.read'
   ]
 }
 
 export function normalizeRole(role: string): string {
+  if (!role) return 'UNKNOWN'
+  
   const roleMap: Record<string, string> = {
     'super_admin': 'SUPER_ADMIN',
     'superadmin': 'SUPER_ADMIN',
@@ -257,11 +581,17 @@ export function normalizeRole(role: string): string {
     
     'dispatcher': 'DISPATCHER',
     'DISPATCHER': 'DISPATCHER',
+    'dispatch_coordinator': 'DISPATCH_COORDINATOR',
+    'DISPATCH_COORDINATOR': 'DISPATCH_COORDINATOR',
+    'dispatchcoordinator': 'DISPATCH_COORDINATOR',
     
     'ambulance_driver': 'AMBULANCE_DRIVER',
     'ambulancedriver': 'AMBULANCE_DRIVER',
     'AMBULANCE_DRIVER': 'AMBULANCE_DRIVER',
     'AMBULANCEDRIVER': 'AMBULANCE_DRIVER',
+    'ambulance_crew': 'AMBULANCE_CREW',
+    'AMBULANCE_CREW': 'AMBULANCE_CREW',
+    'ambulancecrew': 'AMBULANCE_CREW',
     
     'emergency_manager': 'EMERGENCY_MANAGER',
     'emergencymanager': 'EMERGENCY_MANAGER',
@@ -290,18 +620,28 @@ export function normalizeRole(role: string): string {
   }
 
   const normalized = roleMap[role.toLowerCase()] || role.toUpperCase()
+  console.log(`🔄 Role normalization: "${role}" → "${normalized}"`)
   return normalized
 }
 
 export function getPermissionsForRole(role: string): string[] {
   const normalizedRole = normalizeRole(role)
   const permissions = ROLE_PERMISSIONS[normalizedRole] || []
+  
+  console.log(`📋 Getting permissions for role "${role}" (normalized: "${normalizedRole}"):`, permissions.length, 'permissions')
+  
+  if (permissions.length === 0) {
+    console.warn(`⚠️ No permissions found for role: ${normalizedRole}`)
+  }
+  
   return permissions
 }
 
 export function createUserToken(userData: any): UserToken {
   const normalizedRole = normalizeRole(userData.role)
   const permissions = getPermissionsForRole(normalizedRole)
+  
+  console.log(`🔨 Creating user token for ${userData.email} with role ${normalizedRole}`)
   
   const userToken: UserToken = {
     id: userData.id,
@@ -325,23 +665,45 @@ export function createUserObject(userData: any): User {
   return createUserToken(userData) as User
 }
 
+// CRITICAL FIX: This function was NOT properly assigning permissions
 export function ensureBasicPermissions(user: any): UserToken {
-  if (!user.permissions || !Array.isArray(user.permissions)) {
-    const permissions = getPermissionsForRole(user.role)
+  if (!user) {
+    console.error('❌ ensureBasicPermissions: No user provided')
+    return user
+  }
+  
+  console.log(`🔍 ensureBasicPermissions called for user: ${user.email}, role: ${user.role}`)
+  console.log(`📊 Current permissions count: ${user.permissions?.length || 0}`)
+  
+  // Normalize the role first
+  const normalizedRole = normalizeRole(user.role)
+  
+  // Get permissions for the normalized role
+  const rolePermissions = getPermissionsForRole(normalizedRole)
+  
+  console.log(`📋 Role permissions for ${normalizedRole}:`, rolePermissions.length, 'permissions')
+  
+  // If user has no permissions or empty array, assign role permissions
+  if (!user.permissions || !Array.isArray(user.permissions) || user.permissions.length === 0) {
+    console.log(`✅ Assigning ${rolePermissions.length} permissions to user`)
+    
     return {
       ...user,
-      permissions: permissions.length > 0 ? permissions : ['dashboard.read']
+      role: normalizedRole, // Use normalized role
+      permissions: rolePermissions.length > 0 ? rolePermissions : ['dashboard.read']
     }
   }
   
-  if (user.permissions.length === 0) {
-    return {
-      ...user,
-      permissions: ['dashboard.read']
-    }
-  }
+  // If user has permissions, merge with role permissions (deduplicating)
+  const mergedPermissions = Array.from(new Set([...user.permissions, ...rolePermissions]))
   
-  return user as UserToken
+  console.log(`✅ Merged permissions: ${mergedPermissions.length} total`)
+  
+  return {
+    ...user,
+    role: normalizedRole, // Use normalized role
+    permissions: mergedPermissions
+  }
 }
 
 export function getMockUser(): UserToken {
@@ -365,4 +727,3 @@ export async function signToken(payload: any): Promise<string> {
 export async function verifyAndGetUser(token: string): Promise<UserToken | null> {
   return verifyToken(token)
 }
-

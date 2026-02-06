@@ -8,21 +8,17 @@ import { auditLog, AuditAction } from '@/app/lib/audit'
 
 // Helper function to get client IP address
 function getClientIP(request: NextRequest): string {
-  // Try to get IP from headers (common in proxy setups)
   const forwardedFor = request.headers.get('x-forwarded-for')
   if (forwardedFor) {
-    // x-forwarded-for can contain multiple IPs, take the first one
     const ips = forwardedFor.split(',')
     return ips[0].trim()
   }
   
-  // Try other common headers
   const realIP = request.headers.get('x-real-ip')
   if (realIP) {
     return realIP
   }
   
-  // For local development or when headers aren't available
   return '127.0.0.1'
 }
 
@@ -109,26 +105,77 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // IMPORTANT: For demo purposes, accept 'demo123' for all demo users
-    // In production, you should store hashed passwords in the database
+    // ============================================
+    // IMPROVED PASSWORD VALIDATION LOGIC
+    // ============================================
     const isDemoUser = email.includes('@health.go.ke')
     let isValidPassword = false
 
-    if (isDemoUser) {
-      // Demo users use 'demo123'
-      isValidPassword = password === 'demo123'
-      console.log('🔑 Using demo password validation')
-    } else if (user.passwordHash) {
-      // Regular users check hashed password
-      isValidPassword = await bcrypt.compare(password, user.passwordHash)
-      console.log('🔑 Using bcrypt password validation')
-    } else {
-      // Fallback for existing users without passwordHash
-      console.log('⚠️ User has no passwordHash, cannot validate password')
-      isValidPassword = false
+    console.log('🔍 Password validation details:', {
+      email,
+      isDemoUser,
+      hasPasswordHash: !!user.passwordHash,
+      passwordHashLength: user.passwordHash?.length || 0,
+      passwordLength: password?.length || 0
+    })
+
+    // Case 1: Demo users with standard demo password
+    if (isDemoUser && password === 'demo123') {
+      console.log('🔑 Demo user login with demo123 password')
+      isValidPassword = true
+    }
+    // Case 2: Regular users with hashed passwords
+    else if (user.passwordHash && user.passwordHash.length > 0) {
+      console.log('🔑 Using bcrypt validation for registered user')
+      console.log('   - Hash starts with:', user.passwordHash.substring(0, 10))
+      console.log('   - Password to verify:', password)
+      
+      try {
+        // Validate the hash format
+        const isBcryptHash = user.passwordHash.startsWith('$2a$') || 
+                            user.passwordHash.startsWith('$2b$') || 
+                            user.passwordHash.startsWith('$2y$')
+        
+        if (!isBcryptHash) {
+          console.error('❌ Invalid bcrypt hash format!')
+          console.error('   Hash:', user.passwordHash.substring(0, 20))
+          isValidPassword = false
+        } else {
+          // Perform bcrypt comparison
+          isValidPassword = await bcrypt.compare(password, user.passwordHash)
+          console.log('🔑 Bcrypt comparison result:', isValidPassword)
+          
+          // Additional debug info if failed
+          if (!isValidPassword) {
+            console.log('❌ Password mismatch details:')
+            console.log('   - Provided password length:', password.length)
+            console.log('   - Hash format looks valid:', isBcryptHash)
+            
+            // Test with a fresh hash of the same password (for debugging only)
+            const testHash = await bcrypt.hash(password, 10)
+            const testResult = await bcrypt.compare(password, testHash)
+            console.log('   - Test hash comparison (should be true):', testResult)
+          }
+        }
+      } catch (bcryptError: any) {
+        console.error('❌ Bcrypt comparison error:', bcryptError.message)
+        console.error('   Stack:', bcryptError.stack)
+        isValidPassword = false
+      }
+    }
+    // Case 3: User without password hash (shouldn't happen for registered users)
+    else {
+      console.log('⚠️ User has no passwordHash stored')
+      // For demo users only, allow demo123
+      if (isDemoUser && password === 'demo123') {
+        isValidPassword = true
+        console.log('🔑 Demo user allowed with demo123 despite missing hash')
+      } else {
+        isValidPassword = false
+      }
     }
 
-    console.log('🔑 Password valid:', isValidPassword)
+    console.log('🔑 Final password validation result:', isValidPassword)
 
     if (!isValidPassword) {
       console.log('❌ Invalid password for:', email)
@@ -151,7 +198,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Determine facility and county
+    // ============================================
+    // DETERMINE FACILITY AND COUNTY
+    // ============================================
     let facilityId: string | undefined = undefined
     let countyId: string | undefined = undefined
     let facilityType: string | undefined = undefined
@@ -198,7 +247,7 @@ export async function POST(request: NextRequest) {
       permissions
     }
 
-    console.log('✅ User object created with permissions:', userObj.permissions)
+    console.log('✅ User object created with permissions:', userObj.permissions.length)
 
     // Generate token with all necessary user data
     const tokenPayload = {
@@ -226,69 +275,63 @@ export async function POST(request: NextRequest) {
       message: 'Login successful'
     })
 
-    // 1. Set auth_token cookie for middleware (REQUIRED for middleware to work)
+    // Set all cookies
     response.cookies.set('auth_token', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60, // 24 hours
+      maxAge: 24 * 60 * 60,
       path: '/',
     })
 
-    // 2. Set user_role cookie for middleware
     response.cookies.set('user_role', normalizedRole, {
-      httpOnly: false, // Needs to be accessible by middleware
+      httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60, // 24 hours
+      maxAge: 24 * 60 * 60,
       path: '/',
     })
 
-    // 3. Set user_permissions cookie for middleware
     response.cookies.set('user_permissions', permissions.join(','), {
-      httpOnly: false, // Needs to be accessible by middleware
+      httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60, // 24 hours
+      maxAge: 24 * 60 * 60,
       path: '/',
     })
 
-    // 4. Set refresh token as httpOnly cookie for API calls
     response.cookies.set('refreshToken', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      maxAge: 7 * 24 * 60 * 60,
       path: '/',
     })
 
-    // 5. Set user_id cookie for quick access
     response.cookies.set('user_id', user.id, {
       httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60, // 24 hours
+      maxAge: 24 * 60 * 60,
       path: '/',
     })
 
-    // 6. Set facility_id cookie if available
     if (facilityId) {
       response.cookies.set('facility_id', facilityId, {
         httpOnly: false,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 24 * 60 * 60, // 24 hours
+        maxAge: 24 * 60 * 60,
         path: '/',
       })
     }
 
-    // 7. Set county_id cookie if available
     if (countyId) {
       response.cookies.set('county_id', countyId, {
         httpOnly: false,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 24 * 60 * 60, // 24 hours
+        maxAge: 24 * 60 * 60,
         path: '/',
       })
     }
@@ -309,16 +352,14 @@ export async function POST(request: NextRequest) {
     })
 
     // Update last login time
-    if (user.passwordHash) { // Only update if user has password (not demo user)
-      try {
-        await prisma.staff.update({
-          where: { id: user.id },
-          data: { lastLoginAt: new Date() }
-        })
-        console.log('📝 Updated last login time for user')
-      } catch (error) {
-        console.log('⚠️ Could not update lastLoginAt (field might not exist in schema):', error)
-      }
+    try {
+      await prisma.staff.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() }
+      })
+      console.log('📝 Updated last login time for user')
+    } catch (error) {
+      console.log('⚠️ Could not update lastLoginAt (field might not exist in schema)')
     }
 
     console.log('🎉 Login successful for:', email)
@@ -326,7 +367,6 @@ export async function POST(request: NextRequest) {
       auth_token: '✓',
       user_role: normalizedRole,
       user_permissions: permissions.length,
-      refreshToken: '✓',
       user_id: user.id,
       facility_id: facilityId || 'none',
       county_id: countyId || 'none'

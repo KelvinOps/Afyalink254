@@ -1,12 +1,14 @@
 // app/api/auth/logout/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { auditLog, AuditAction } from '@/app/lib/audit'
+import { auditActions } from '@/app/lib/audit'
 
 export async function POST(request: NextRequest) {
   try {
     // Get user from token before clearing cookies
     const token = request.cookies.get('auth_token')?.value
     let userName = 'Unknown'
+    let userId = 'unknown'
+    let userRole = 'unknown'
     
     if (token) {
       try {
@@ -14,18 +16,25 @@ export async function POST(request: NextRequest) {
         const user = await verifyToken(token)
         if (user) {
           userName = user.name
+          userId = user.id
+          userRole = user.role
           
-          // Log logout action
-          await auditLog({
-            action: AuditAction.LOGOUT,
-            entityType: 'USER',
-            entityId: user.id,
-            userId: user.id,
-            userRole: user.role,
-            userName: user.name,
-            description: 'User logged out from the system',
-            success: true
-          })
+          // Get IP and user agent
+          const ipAddress = request.headers.get('x-forwarded-for') || 
+                           request.headers.get('x-real-ip') || 
+                           'unknown'
+          const userAgent = request.headers.get('user-agent') || undefined
+          
+          // Log logout action using queue (non-blocking)
+          auditActions.logLogout(
+            user.id,
+            user.role,
+            user.name,
+            ipAddress,
+            userAgent
+          )
+          
+          console.log('✅ Logout audit queued for:', user.email)
         }
       } catch (error) {
         console.log('Unable to verify token during logout:', error)

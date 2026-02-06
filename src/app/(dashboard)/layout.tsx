@@ -6,7 +6,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { NotificationProvider } from '@/app/contexts/NotificationContext'
 import { WebSocketProvider } from '@/app/contexts/WebSocketContext'
-import { Sidebar } from '@/app/components/layout/Sidebar'
+import Sidebar from '@/app/components/layout/Sidebar' // Changed to default import
 import { Menu, Bell, User, LogOut } from 'lucide-react'
 
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {

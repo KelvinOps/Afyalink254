@@ -37,10 +37,58 @@ export interface AuditLogData {
   errorMessage?: string;
 }
 
+// Queue for background audit logging
+const auditQueue: AuditLogData[] = []
+let isProcessing = false
+
 /**
- * Create an audit log entry for tracking critical actions in the system
+ * Queue audit log for background processing (non-blocking)
+ * This is now the PRIMARY method to use for audit logging
  */
-export async function auditLog(data: AuditLogData) {
+export function queueAuditLog(data: AuditLogData) {
+  auditQueue.push(data)
+  
+  // Process queue in background without blocking
+  setImmediate(() => {
+    processAuditQueue().catch(err => {
+      console.error('Background audit processing error:', err)
+    })
+  })
+}
+
+/**
+ * Process queued audit logs in background
+ */
+async function processAuditQueue() {
+  if (isProcessing || auditQueue.length === 0) return
+  
+  isProcessing = true
+  
+  try {
+    while (auditQueue.length > 0) {
+      const item = auditQueue.shift()
+      if (item) {
+        // Use a timeout to prevent hanging
+        await Promise.race([
+          auditLogDirect(item),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Audit log timeout')), 5000)
+          )
+        ]).catch(err => {
+          console.error('Background audit log failed (will not retry):', err.message)
+          // Don't retry - just log and continue
+        })
+      }
+    }
+  } finally {
+    isProcessing = false
+  }
+}
+
+/**
+ * Direct audit log creation (use queueAuditLog instead for non-critical paths)
+ */
+async function auditLogDirect(data: AuditLogData) {
   try {
     // Handle changes field properly for Prisma JSON type
     let changesData: any = Prisma.DbNull
@@ -48,7 +96,7 @@ export async function auditLog(data: AuditLogData) {
       changesData = data.changes
     }
 
-    // Create the audit log entry
+    // Create the audit log entry with a single attempt
     const auditEntry = await prisma.auditLog.create({
       data: {
         userId: data.userId,
@@ -59,19 +107,41 @@ export async function auditLog(data: AuditLogData) {
         entityId: data.entityId,
         description: data.description,
         changes: changesData,
-        ipAddress: data.ipAddress,
-        userAgent: data.userAgent,
-        facilityId: data.facilityId,
+        ipAddress: data.ipAddress || null,
+        userAgent: data.userAgent || null,
+        facilityId: data.facilityId || null,
         success: data.success !== undefined ? data.success : true,
-        errorMessage: data.errorMessage,
+        errorMessage: data.errorMessage || null,
         timestamp: new Date(),
       },
     })
 
     return auditEntry
   } catch (error) {
-    console.error('Failed to create audit log:', error)
-    // Don't throw to avoid breaking main functionality
+    // Just log the error, don't throw
+    console.error('Audit log creation failed:', error instanceof Error ? error.message : 'Unknown error')
+    return null
+  }
+}
+
+/**
+ * Create an audit log entry (synchronous version for critical operations only)
+ * For most cases, use queueAuditLog instead
+ */
+export async function auditLog(data: AuditLogData) {
+  // For critical operations that need immediate logging
+  // Use a shorter timeout and single attempt
+  try {
+    return await Promise.race([
+      auditLogDirect(data),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Audit log timeout')), 3000)
+      )
+    ])
+  } catch (error) {
+    console.error('Critical audit log failed (queuing for retry):', error)
+    // Fall back to queue
+    queueAuditLog(data)
     return null
   }
 }
@@ -110,7 +180,6 @@ export async function getAuditLogs(options: {
   if (entityType) where.entityType = entityType
   if (entityId) where.entityId = entityId
   if (action) {
-    // FIXED: Cast the action to the proper Prisma enum type
     where.action = action as Prisma.EnumAuditActionFilter<"AuditLog">
   }
   if (facilityId) where.facilityId = facilityId
@@ -281,22 +350,38 @@ export async function getAuditStatistics(timeframe: '24h' | '7d' | '30d' = '24h'
     const successfulActions = successStats.find(item => item.success === true)?._count?.success || 0
     const successRate = totalActions > 0 ? (successfulActions / totalActions) * 100 : 0
 
-    // Get hourly activity for the last 24 hours - FIXED: Added proper type annotation
-    let hourlyActivity: Array<{ hour: string; count: number }> = []
+    // Get hourly activity for the last 24 hours (FIXED VERSION)
+    let hourlyActivity: Array<{ hour: Date; count: bigint }> = []
     if (timeframe === '24h') {
-      // FIXED: Use proper SQL template and handle the facilityId condition correctly
-      const hourlyData = await prisma.$queryRaw<Array<{ hour: string; count: number }>>`
-        SELECT 
-          DATE_TRUNC('hour', timestamp) as hour,
-          COUNT(*) as count
-        FROM "audit_logs" 
-        WHERE timestamp >= ${startDate} AND timestamp <= ${now}
-        ${facilityId ? Prisma.sql`AND "facilityId" = ${facilityId}` : Prisma.empty}
-        GROUP BY DATE_TRUNC('hour', timestamp)
-        ORDER BY hour
-      `
-      hourlyActivity = hourlyData
+      try {
+        // Build the where clause for facility filtering
+        const facilityFilter = facilityId 
+          ? Prisma.sql`AND "facilityId" = ${facilityId}` 
+          : Prisma.empty
+
+        hourlyActivity = await prisma.$queryRaw<Array<{ hour: Date; count: bigint }>>`
+          SELECT 
+            DATE_TRUNC('hour', timestamp) as hour,
+            COUNT(*)::int as count
+          FROM "audit_log" 
+          WHERE timestamp >= ${startDate} 
+            AND timestamp <= ${now}
+            ${facilityFilter}
+          GROUP BY DATE_TRUNC('hour', timestamp)
+          ORDER BY hour
+        `
+      } catch (queryError) {
+        console.error('Error fetching hourly activity:', queryError)
+        // Fallback: return empty array instead of failing
+        hourlyActivity = []
+      }
     }
+
+    // Convert hourly activity to proper format
+    const formattedHourlyActivity = hourlyActivity.map(item => ({
+      hour: item.hour.toISOString(),
+      count: Number(item.count), // Convert BigInt to number
+    }))
 
     return {
       timeframe,
@@ -311,11 +396,11 @@ export async function getAuditStatistics(timeframe: '24h' | '7d' | '30d' = '24h'
       })),
       topUsers: topUsers.map(item => ({
         userId: item.userId,
-        userName: item.userName,
+        userName: item.userName || 'Unknown',
         count: item._count.userId,
       })),
-      successRate: Math.round(successRate * 100) / 100, // Round to 2 decimal places
-      hourlyActivity,
+      successRate: Math.round(successRate * 100) / 100,
+      hourlyActivity: formattedHourlyActivity,
     }
   } catch (error) {
     console.error('Error getting audit statistics:', error)
@@ -342,7 +427,7 @@ export async function cleanupAuditLogs(retentionDays: number = 365) {
     console.log(`Cleaned up ${result.count} audit logs older than ${retentionDays} days`)
     
     // Log the cleanup action
-    await auditLog({
+    queueAuditLog({
       action: AuditAction.DELETE,
       entityType: 'AUDIT_LOG',
       entityId: 'batch-cleanup',
@@ -356,8 +441,7 @@ export async function cleanupAuditLogs(retentionDays: number = 365) {
   } catch (error) {
     console.error('Failed to cleanup audit logs:', error)
     
-    // Log the failure
-    await auditLog({
+    queueAuditLog({
       action: AuditAction.DELETE,
       entityType: 'AUDIT_LOG',
       entityId: 'batch-cleanup',
@@ -411,11 +495,11 @@ export async function exportAuditLogsToCSV(options: {
       log.timestamp.toISOString(),
       log.userId,
       log.userRole,
-      log.userName,
+      log.userName || '',
       log.action,
       log.entityType,
       log.entityId,
-      `"${log.description.replace(/"/g, '""')}"`, // Escape quotes in description
+      `"${log.description.replace(/"/g, '""')}"`,
       log.success ? 'Yes' : 'No',
       log.ipAddress || '',
       log.facilityId || '',
@@ -426,8 +510,7 @@ export async function exportAuditLogsToCSV(options: {
       ...csvRows.map(row => row.join(',')),
     ].join('\n')
 
-    // Log the export action
-    await auditLog({
+    queueAuditLog({
       action: AuditAction.READ,
       entityType: 'AUDIT_LOG',
       entityId: 'export-csv',
@@ -444,10 +527,10 @@ export async function exportAuditLogsToCSV(options: {
   }
 }
 
-// Convenience functions for common audit actions
+// Convenience functions for common audit actions (ALL USE QUEUE)
 export const auditActions = {
-  async logPatientCreation(patientId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logPatientCreation(patientId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.CREATE,
       entityType: 'PATIENT',
       entityId: patientId,
@@ -459,8 +542,8 @@ export const auditActions = {
     })
   },
 
-  async logPatientUpdate(patientId: string, userId: string, userRole: string, userName: string, changes: any, facilityId?: string) {
-    return auditLog({
+  logPatientUpdate(patientId: string, userId: string, userRole: string, userName: string, changes: any, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.UPDATE,
       entityType: 'PATIENT',
       entityId: patientId,
@@ -473,8 +556,8 @@ export const auditActions = {
     })
   },
 
-  async logEmergencyCreation(emergencyId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logEmergencyCreation(emergencyId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.CREATE,
       entityType: 'EMERGENCY',
       entityId: emergencyId,
@@ -486,8 +569,8 @@ export const auditActions = {
     })
   },
 
-  async logTransferRequest(transferId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logTransferRequest(transferId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.CREATE,
       entityType: 'TRANSFER',
       entityId: transferId,
@@ -499,8 +582,8 @@ export const auditActions = {
     })
   },
 
-  async logDispatchCreation(dispatchId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logDispatchCreation(dispatchId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.CREATE,
       entityType: 'DISPATCH',
       entityId: dispatchId,
@@ -512,8 +595,8 @@ export const auditActions = {
     })
   },
 
-  async logAmbulanceAssignment(dispatchId: string, ambulanceId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logAmbulanceAssignment(dispatchId: string, ambulanceId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.UPDATE,
       entityType: 'DISPATCH',
       entityId: dispatchId,
@@ -526,8 +609,8 @@ export const auditActions = {
     })
   },
 
-  async logStatusUpdate(entityType: string, entityId: string, oldStatus: string, newStatus: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logStatusUpdate(entityType: string, entityId: string, oldStatus: string, newStatus: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.UPDATE,
       entityType,
       entityId,
@@ -540,8 +623,8 @@ export const auditActions = {
     })
   },
 
-  async logLogin(userId: string, userRole: string, userName: string, ipAddress?: string, userAgent?: string) {
-    return auditLog({
+  logLogin(userId: string, userRole: string, userName: string, ipAddress?: string, userAgent?: string) {
+    queueAuditLog({
       action: AuditAction.LOGIN,
       entityType: 'USER',
       entityId: userId,
@@ -554,8 +637,22 @@ export const auditActions = {
     })
   },
 
-  async logFailedLogin(userId: string, userRole: string, userName: string, errorMessage: string, ipAddress?: string, userAgent?: string) {
-    return auditLog({
+  logLogout(userId: string, userRole: string, userName: string, ipAddress?: string, userAgent?: string) {
+    queueAuditLog({
+      action: AuditAction.LOGOUT,
+      entityType: 'USER',
+      entityId: userId,
+      userId,
+      userRole,
+      userName,
+      description: `User logged out from the system`,
+      ipAddress,
+      userAgent,
+    })
+  },
+
+  logFailedLogin(userId: string, userRole: string, userName: string, errorMessage: string, ipAddress?: string, userAgent?: string) {
+    queueAuditLog({
       action: AuditAction.LOGIN,
       entityType: 'USER',
       entityId: userId,
@@ -570,8 +667,8 @@ export const auditActions = {
     })
   },
 
-  async logSHAClaimSubmission(claimId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logSHAClaimSubmission(claimId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.SUBMIT_CLAIM,
       entityType: 'SHA_CLAIM',
       entityId: claimId,
@@ -583,8 +680,8 @@ export const auditActions = {
     })
   },
 
-  async logResourceRequest(resourceId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logResourceRequest(resourceId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.CREATE,
       entityType: 'RESOURCE_REQUEST',
       entityId: resourceId,
@@ -596,8 +693,8 @@ export const auditActions = {
     })
   },
 
-   async logStaffCreation(staffId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logStaffCreation(staffId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.CREATE,
       entityType: 'STAFF',
       entityId: staffId,
@@ -609,8 +706,8 @@ export const auditActions = {
     })
   },
 
-  async logStaffUpdate(staffId: string, userId: string, userRole: string, userName: string, changes: any, facilityId?: string) {
-    return auditLog({
+  logStaffUpdate(staffId: string, userId: string, userRole: string, userName: string, changes: any, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.UPDATE,
       entityType: 'STAFF',
       entityId: staffId,
@@ -623,8 +720,8 @@ export const auditActions = {
     })
   },
 
-  async logStaffDeactivation(staffId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logStaffDeactivation(staffId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.DELETE,
       entityType: 'STAFF',
       entityId: staffId,
@@ -636,8 +733,8 @@ export const auditActions = {
     })
   },
 
-  async logScheduleAssignment(scheduleId: string, staffId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
-    return auditLog({
+  logScheduleAssignment(scheduleId: string, staffId: string, userId: string, userRole: string, userName: string, facilityId?: string) {
+    queueAuditLog({
       action: AuditAction.CREATE,
       entityType: 'STAFF_SCHEDULE',
       entityId: scheduleId,
@@ -650,10 +747,6 @@ export const auditActions = {
   }
 }
 
-
-
-
-
 /**
  * Middleware for automatic audit logging of API requests
  */
@@ -663,7 +756,6 @@ export function createAuditMiddleware(handler: Function, options?: {
   extractEntityId?: (req: any) => string;
 }) {
   return async (req: any, ...args: any[]) => {
-    const startTime = Date.now()
     let success = true
     let errorMessage: string | undefined
 
@@ -675,17 +767,14 @@ export function createAuditMiddleware(handler: Function, options?: {
       errorMessage = error instanceof Error ? error.message : 'Unknown error'
       throw error
     } finally {
-      // Extract user info from request (adjust based on your auth system)
       const userId = req.user?.id || 'unknown'
       const userRole = req.user?.role || 'unknown'
       const userName = req.user?.name || 'Unknown User'
       const facilityId = req.user?.facilityId
-
-      // Extract entity ID if provided
       const entityId = options?.extractEntityId?.(req) || 'unknown'
 
-      // Auto-log the action
-      await auditLog({
+      // Use queue for middleware
+      queueAuditLog({
         action: options?.action || AuditAction.READ,
         entityType: options?.entityType || 'API_REQUEST',
         entityId,

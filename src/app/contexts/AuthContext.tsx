@@ -1,9 +1,9 @@
-// /app/contexts/AuthContext.tsx 
+// app/contexts/AuthContext.tsx
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { UserToken, hasPermission as checkHasPermission } from '@/app/lib/auth'
+import { UserToken, hasPermission as checkHasPermission, ensureBasicPermissions, normalizeRole } from '@/app/lib/auth'
 
 interface AuthContextType {
   user: UserToken | null
@@ -12,7 +12,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
-  hasPermission: (permission: string) => boolean  // Add this
+  hasPermission: (permission: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -29,7 +29,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const pathname = usePathname()
   const authCheckRef = useRef(false)
 
+  // Check authentication status
   const checkAuth = useCallback(async (force = false) => {
+    // Prevent duplicate checks unless forced
     if ((authCheckRef.current && !force) || (!force && isInitialized)) {
       return
     }
@@ -47,8 +49,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       if (response.ok) {
         const userData = await response.json()
-        console.log('✅ User authenticated:', userData.email)
-        setUser(userData)
+        console.log('✅ User authenticated:', userData.email, 'Role:', userData.role)
+        console.log('📦 Raw user data from API:', userData)
+        
+        // Ensure user has proper permissions
+        const userWithPermissions = ensureBasicPermissions(userData)
+        
+        console.log('🔐 User after ensureBasicPermissions:')
+        console.log('   - Email:', userWithPermissions.email)
+        console.log('   - Role:', userWithPermissions.role)
+        console.log('   - Permissions count:', userWithPermissions.permissions?.length || 0)
+        console.log('   - First 10 permissions:', userWithPermissions.permissions?.slice(0, 10))
+        
+        setUser(userWithPermissions)
       } else {
         console.log('❌ No valid session found')
         setUser(null)
@@ -63,12 +76,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [isInitialized])
 
+  // Initial auth check on mount
   useEffect(() => {
     if (!isInitialized) {
       checkAuth()
     }
   }, [checkAuth, isInitialized])
 
+  // Redirect logic for protected routes
   useEffect(() => {
     if (!isInitialized || isLoading) return
 
@@ -77,12 +92,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
                         pathname?.startsWith('/api/') ||
                         pathname?.includes('.')
 
+    // Redirect to login if accessing protected route without authentication
     if (pathname && !isPublicPath && !user && isInitialized && !isLoading) {
       console.log('🔒 Redirecting to login from protected route:', pathname)
       router.replace(`/login?redirect=${encodeURIComponent(pathname)}`)
     }
   }, [user, isLoading, isInitialized, pathname, router])
 
+  // Login function
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true)
@@ -104,10 +121,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       const data = await response.json()
-      console.log('✅ Login successful')
+      console.log('✅ Login successful for:', data.user?.email)
+      console.log('📦 Raw login response:', data.user)
       
-      setUser(data.user)
+      // Ensure user has proper permissions
+      const userWithPermissions = ensureBasicPermissions(data.user)
       
+      console.log('🔐 User after login ensureBasicPermissions:')
+      console.log('   - Email:', userWithPermissions.email)
+      console.log('   - Role:', userWithPermissions.role)
+      console.log('   - Permissions count:', userWithPermissions.permissions?.length || 0)
+      console.log('   - Sample permissions:', userWithPermissions.permissions?.slice(0, 10))
+      
+      setUser(userWithPermissions)
+      
+      // Redirect to dashboard
       window.location.href = '/dashboard'
       
     } catch (error) {
@@ -118,6 +146,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
+  // Logout function
   const logout = async () => {
     try {
       console.log('🚪 Logging out...')
@@ -136,29 +165,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
+  // Refresh user data
   const refreshUser = async () => {
     await checkAuth(true)
   }
 
-  // CRITICAL FIX: Add hasPermission function to context
+  // hasPermission function using your auth.ts utility
   const hasPermission = useCallback((permission: string): boolean => {
-    if (!user) return false
-    return checkHasPermission(user, permission)
+    if (!user) {
+      console.log('❌ hasPermission check: No user logged in')
+      return false
+    }
+    
+    const normalizedRole = normalizeRole(user.role)
+    console.log(`🔑 Checking permission "${permission}" for user ${user.email} (role: ${normalizedRole})`)
+    console.log(`📊 User has ${user.permissions?.length || 0} permissions`)
+    
+    const result = checkHasPermission(user, permission)
+    
+    return result
   }, [user])
 
-  const value = {
+  const value: AuthContextType = {
     user,
     isLoading,
     isInitialized,
     login,
     logout,
     refreshUser,
-    hasPermission,  
+    hasPermission,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+// Custom hook to use auth context
 export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {

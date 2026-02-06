@@ -1,7 +1,7 @@
 // api/auth/register/route.ts 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
-import { createToken } from '@/app/lib/jwt'
+import { createToken } from '@/app/lib/auth'
 import { normalizeRole, getPermissionsForRole, UserRole } from '@/app/lib/auth'
 import bcrypt from 'bcryptjs'
 
@@ -12,69 +12,28 @@ function mapUserRoleToStaffRole(userRole: UserRole): any {
     'ADMIN': 'ADMINISTRATOR',
     'COUNTY_ADMIN': 'ADMINISTRATOR', 
     'COUNTY_HEALTH_OFFICER': 'HEALTH_OFFICER',
-    'HOSPITAL_ADMIN': 'HOSPITAL_DIRECTOR',
+    'HOSPITAL_ADMIN': 'ADMINISTRATOR',
     'FACILITY_MANAGER': 'MANAGER',
     'DOCTOR': 'MEDICAL_OFFICER',
     'NURSE': 'NURSE',
     'TRIAGE_OFFICER': 'TRIAGE_NURSE',
     'DISPATCHER': 'DISPATCHER',
+    'DISPATCH_COORDINATOR': 'DISPATCHER',
     'AMBULANCE_DRIVER': 'AMBULANCE_DRIVER',
+    'AMBULANCE_CREW': 'AMBULANCE_CREW',
     'EMERGENCY_MANAGER': 'EMERGENCY_MANAGER',
     'FINANCE_OFFICER': 'ADMINISTRATOR',
     'LAB_TECHNICIAN': 'LAB_TECHNICIAN',
     'PHARMACIST': 'PHARMACIST',
     'MEDICAL_SUPERINTENDENT': 'MEDICAL_SUPERINTENDENT',
-    'HOSPITAL_DIRECTOR': 'HOSPITAL_DIRECTOR'
+    'HOSPITAL_DIRECTOR': 'ADMINISTRATOR'
   }
   return roleMap[userRole] || 'SUPPORT_STAFF'
 }
 
-// Type for the user with facility data
-interface UserWithFacilities {
-  id: string
-  userId: string
-  staffNumber: string
-  firstName: string
-  lastName: string
-  email: string
-  phone: string
-  role: any
-  facilityType?: string
-  hospitalId?: string | null
-  healthCenterId?: string | null
-  dispensaryId?: string | null
-  departmentId?: string | null
-  isActive: boolean
-  createdAt: Date
-  updatedAt: Date
-  hospital?: {
-    id: string
-    name: string
-    county?: {
-      id: string
-      name: string
-    } | null
-  } | null
-  healthCenter?: {
-    id: string
-    name: string
-    county?: {
-      id: string
-      name: string
-    } | null
-  } | null
-  dispensary?: {
-    id: string
-    name: string
-    county?: {
-      id: string
-      name: string
-    } | null
-  } | null
-}
-
 export async function POST(request: NextRequest) {
   try {
+    const body = await request.json()
     const {
       email,
       password,
@@ -87,14 +46,16 @@ export async function POST(request: NextRequest) {
       healthCenterId,
       dispensaryId,
       departmentId,
-    } = await request.json()
+    } = body
 
     console.log('📝 Registration attempt for:', email)
+    console.log('📋 Registration data:', { email, firstName, lastName, role, facilityType })
 
     // Validate required fields
     if (!email || !password || !firstName || !lastName || !role) {
+      console.log('❌ Missing required fields')
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: email, password, firstName, lastName, and role are required' },
         { status: 400 }
       )
     }
@@ -103,14 +64,16 @@ export async function POST(request: NextRequest) {
     const validRoles: UserRole[] = [
       'SUPER_ADMIN', 'ADMIN', 'COUNTY_ADMIN', 'COUNTY_HEALTH_OFFICER',
       'HOSPITAL_ADMIN', 'FACILITY_MANAGER', 'DOCTOR', 'NURSE',
-      'TRIAGE_OFFICER', 'DISPATCHER', 'AMBULANCE_DRIVER', 'EMERGENCY_MANAGER',
+      'TRIAGE_OFFICER', 'DISPATCHER', 'DISPATCH_COORDINATOR',
+      'AMBULANCE_DRIVER', 'AMBULANCE_CREW', 'EMERGENCY_MANAGER',
       'FINANCE_OFFICER', 'LAB_TECHNICIAN', 'PHARMACIST',
       'MEDICAL_SUPERINTENDENT', 'HOSPITAL_DIRECTOR'
     ]
 
     if (!validRoles.includes(role as UserRole)) {
+      console.log('❌ Invalid role:', role)
       return NextResponse.json(
-        { error: 'Invalid role specified' },
+        { error: `Invalid role specified. Must be one of: ${validRoles.join(', ')}` },
         { status: 400 }
       )
     }
@@ -128,6 +91,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Get default hospital for assignment
+    let defaultHospitalId = hospitalId
+    let defaultCountyId = null
+
+    if (!defaultHospitalId) {
+      // Try to find a default hospital
+      const defaultHospital = await prisma.hospital.findFirst({
+        where: { isActive: true },
+        include: { county: true }
+      })
+
+      if (defaultHospital) {
+        defaultHospitalId = defaultHospital.id
+        defaultCountyId = defaultHospital.countyId
+        console.log('🏥 Assigned to default hospital:', defaultHospital.name)
+      } else {
+        console.log('⚠️ No hospitals found in database')
+      }
+    }
+
     // Generate staff number
     const staffCount = await prisma.staff.count()
     const staffNumber = `STAFF${String(staffCount + 1).padStart(6, '0')}`
@@ -136,37 +119,38 @@ export async function POST(request: NextRequest) {
     const staffRole = mapUserRoleToStaffRole(role as UserRole)
     console.log('🎯 Mapped role:', role, '->', staffRole)
 
-    // Hash password (store in a separate variable for now)
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
+    console.log('🔒 Password hashed successfully')
 
-    // First create the user without passwordHash (if field doesn't exist)
+    // Create user with hashed password
     const user = await prisma.staff.create({
       data: {
-        userId: email,
+        userId: email, // Using email as userId
         staffNumber,
         email,
         firstName,
         lastName,
-        phone,
+        phone: phone || null,
         role: staffRole,
         facilityType: facilityType || 'HOSPITAL',
-        hospitalId: hospitalId || null,
-        healthCenterId: healthCenterId || null,
-        dispensaryId: dispensaryId || null,
+        hospitalId: facilityType === 'HOSPITAL' ? defaultHospitalId : null,
+        healthCenterId: facilityType === 'HEALTH_CENTER' ? healthCenterId : null,
+        dispensaryId: facilityType === 'DISPENSARY' ? dispensaryId : null,
         departmentId: departmentId || null,
         employmentType: 'PERMANENT',
         contractType: 'COUNTY',
         hireDate: new Date(),
         isActive: true,
         isOnDuty: false,
-        // Note: If your Prisma schema doesn't have passwordHash field,
-        // you might need to store it elsewhere or update your schema
+        passwordHash: hashedPassword, // ✅ STORE THE HASHED PASSWORD
       },
     })
 
-    console.log('✅ User created:', user.id)
+    console.log('✅ User created:', user.id, user.email)
+    console.log('✅ Password hash stored successfully')
 
-    // After creating user, fetch with relations to get facility info
+    // Fetch user with relations
     const userWithFacilities = await prisma.staff.findUnique({
       where: { id: user.id },
       include: {
@@ -187,22 +171,22 @@ export async function POST(request: NextRequest) {
         },
         department: true,
       },
-    }) as UserWithFacilities | null
+    })
 
     if (!userWithFacilities) {
       throw new Error('Failed to fetch created user')
     }
 
     // Determine facility and county
-    let facilityId = null
-    let countyId = null
-    let facilityTypeName = null
-    let facilityName = null
+    let facilityId: string | undefined = undefined
+    let countyId: string | undefined = undefined
+    let facilityTypeName: string | undefined = undefined
+    let facilityName: string | undefined = undefined
 
     // Check hospital relation
     if (userWithFacilities.hospitalId && userWithFacilities.hospital) {
       facilityId = userWithFacilities.hospital.id
-      countyId = userWithFacilities.hospital.county?.id || null
+      countyId = userWithFacilities.hospital.county?.id || undefined
       facilityTypeName = 'HOSPITAL'
       facilityName = userWithFacilities.hospital.name
       console.log('🏥 User assigned to hospital:', facilityName)
@@ -210,7 +194,7 @@ export async function POST(request: NextRequest) {
     // Check health center relation
     else if (userWithFacilities.healthCenterId && userWithFacilities.healthCenter) {
       facilityId = userWithFacilities.healthCenter.id
-      countyId = userWithFacilities.healthCenter.county?.id || null
+      countyId = userWithFacilities.healthCenter.county?.id || undefined
       facilityTypeName = 'HEALTH_CENTER'
       facilityName = userWithFacilities.healthCenter.name
       console.log('🏥 User assigned to health center:', facilityName)
@@ -218,30 +202,20 @@ export async function POST(request: NextRequest) {
     // Check dispensary relation
     else if (userWithFacilities.dispensaryId && userWithFacilities.dispensary) {
       facilityId = userWithFacilities.dispensary.id
-      countyId = userWithFacilities.dispensary.county?.id || null
+      countyId = userWithFacilities.dispensary.county?.id || undefined
       facilityTypeName = 'DISPENSARY'
       facilityName = userWithFacilities.dispensary.name
       console.log('🏥 User assigned to dispensary:', facilityName)
     } 
     else {
-      console.log('🏥 No facility assignment for user')
-      // Set default values based on facilityType
-      if (facilityType === 'HOSPITAL' && hospitalId) {
-        facilityId = hospitalId
-        facilityTypeName = 'HOSPITAL'
-      } else if (facilityType === 'HEALTH_CENTER' && healthCenterId) {
-        facilityId = healthCenterId
-        facilityTypeName = 'HEALTH_CENTER'
-      } else if (facilityType === 'DISPENSARY' && dispensaryId) {
-        facilityId = dispensaryId
-        facilityTypeName = 'DISPENSARY'
-      }
+      console.log('⚠️ No facility assignment for user')
+      facilityTypeName = facilityType || 'HOSPITAL'
     }
 
     // Get normalized role and permissions
     const normalizedRole = normalizeRole(role as string)
     const permissions = getPermissionsForRole(normalizedRole)
-    console.log('🔑 User permissions:', permissions)
+    console.log('🔑 User permissions:', permissions.length, 'permissions')
 
     // Create user object with permissions
     const userObj = {
@@ -251,45 +225,37 @@ export async function POST(request: NextRequest) {
       lastName: user.lastName,
       name: `${user.firstName} ${user.lastName}`,
       role: normalizedRole,
-      facilityId,
-      countyId,
-      facilityName,
+      hospitalId: facilityId,
+      facilityId: facilityId,
+      countyId: countyId,
       facilityType: facilityTypeName,
       permissions
     }
 
     // Generate token
-    const tokenPayload = {
-      userId: user.id,
-      email: user.email,
-      role: normalizedRole,
-      facilityId,
-      countyId,
-      facilityName,
-      facilityType: facilityTypeName,
-      permissions
-    }
-
-    const accessToken = await createToken(tokenPayload)
+    const accessToken = await createToken(userObj)
     console.log('🔐 Token generated successfully')
 
     // Create response
     const response = NextResponse.json({
-      user: userObj,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        name: `${user.firstName} ${user.lastName}`,
+        role: normalizedRole,
+        facilityId: facilityId,
+        countyId: countyId,
+        facilityName: facilityName,
+        facilityType: facilityTypeName,
+        permissions
+      },
       accessToken,
-      message: 'Registration successful'
-    })
+      message: 'Registration successful! Welcome to the National Emergency Healthcare System.'
+    }, { status: 201 })
 
-    // Set refresh token as httpOnly cookie
-    response.cookies.set('refreshToken', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-      path: '/',
-    })
-
-    // Set auth_token for middleware
+    // Set cookies
     response.cookies.set('auth_token', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -298,7 +264,14 @@ export async function POST(request: NextRequest) {
       path: '/',
     })
 
-    // Set user role and permissions cookies for middleware
+    response.cookies.set('refreshToken', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+      path: '/',
+    })
+
     response.cookies.set('user_role', normalizedRole, {
       httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
@@ -315,7 +288,6 @@ export async function POST(request: NextRequest) {
       path: '/',
     })
 
-    // Set user_id cookie for quick access
     response.cookies.set('user_id', user.id, {
       httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
@@ -324,7 +296,6 @@ export async function POST(request: NextRequest) {
       path: '/',
     })
 
-    // Set facility_id cookie if available
     if (facilityId) {
       response.cookies.set('facility_id', facilityId, {
         httpOnly: false,
@@ -335,7 +306,6 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Set county_id cookie if available
     if (countyId) {
       response.cookies.set('county_id', countyId, {
         httpOnly: false,
@@ -351,7 +321,6 @@ export async function POST(request: NextRequest) {
       auth_token: '✓',
       user_role: normalizedRole,
       user_permissions: permissions.length,
-      refreshToken: '✓',
       user_id: user.id,
       facility_id: facilityId || 'none',
       county_id: countyId || 'none'
@@ -359,12 +328,29 @@ export async function POST(request: NextRequest) {
 
     return response
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('💥 Registration error:', error)
+    console.error('💥 Error stack:', error.stack)
+    
+    // Handle Prisma errors
+    if (error.code === 'P2002') {
+      return NextResponse.json(
+        { error: 'A user with this email or staff number already exists' },
+        { status: 409 }
+      )
+    }
+
+    if (error.code === 'P2003') {
+      return NextResponse.json(
+        { error: 'Invalid facility reference. Please select a valid facility.' },
+        { status: 400 }
+      )
+    }
+
     return NextResponse.json(
       { 
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Registration failed. Please try again.',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       },
       { status: 500 }
     )
