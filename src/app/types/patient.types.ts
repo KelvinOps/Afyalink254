@@ -465,7 +465,7 @@ export interface ExportOptions {
 // RESPONSE & ERROR TYPES
 // ============================================
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean
   data?: T
   error?: string
@@ -477,7 +477,7 @@ export interface ApiResponse<T = any> {
 export interface ApiError {
   error: string
   message?: string
-  details?: any
+  details?: Record<string, unknown> | string | string[]
   statusCode: number
   timestamp: string
 }

@@ -15,6 +15,21 @@ export interface UserToken {
   permissions: string[]
 }
 
+// Define interface for user data from database/form
+export interface UserData {
+  id: string
+  email: string
+  name?: string
+  firstName?: string
+  lastName?: string
+  role: string
+  hospitalId?: string
+  countyId?: string
+  facilityId?: string
+  facilityType?: string
+  permissions?: string[]
+}
+
 export type UserRole = 
   | 'SUPER_ADMIN'
   | 'COUNTY_ADMIN'
@@ -637,7 +652,7 @@ export function getPermissionsForRole(role: string): string[] {
   return permissions
 }
 
-export function createUserToken(userData: any): UserToken {
+export function createUserToken(userData: UserData): UserToken {
   const normalizedRole = normalizeRole(userData.role)
   const permissions = getPermissionsForRole(normalizedRole)
   
@@ -661,15 +676,22 @@ export function createUserToken(userData: any): UserToken {
 }
 
 // Legacy function for backward compatibility
-export function createUserObject(userData: any): User {
+export function createUserObject(userData: UserData): User {
   return createUserToken(userData) as User
 }
 
 // CRITICAL FIX: This function was NOT properly assigning permissions
-export function ensureBasicPermissions(user: any): UserToken {
+export function ensureBasicPermissions(user: UserToken | UserData): UserToken {
   if (!user) {
     console.error('❌ ensureBasicPermissions: No user provided')
-    return user
+    // Return a safe default instead of undefined
+    return {
+      id: '',
+      email: '',
+      name: '',
+      role: 'UNKNOWN',
+      permissions: ['dashboard.read']
+    }
   }
   
   console.log(`🔍 ensureBasicPermissions called for user: ${user.email}, role: ${user.role}`)
@@ -689,6 +711,9 @@ export function ensureBasicPermissions(user: any): UserToken {
     
     return {
       ...user,
+      id: user.id,
+      email: user.email,
+      name: user.name || `${(user as UserData).firstName || ''} ${(user as UserData).lastName || ''}`.trim(),
       role: normalizedRole, // Use normalized role
       permissions: rolePermissions.length > 0 ? rolePermissions : ['dashboard.read']
     }
@@ -701,6 +726,9 @@ export function ensureBasicPermissions(user: any): UserToken {
   
   return {
     ...user,
+    id: user.id,
+    email: user.email,
+    name: user.name || `${(user as UserData).firstName || ''} ${(user as UserData).lastName || ''}`.trim(),
     role: normalizedRole, // Use normalized role
     permissions: mergedPermissions
   }
@@ -719,8 +747,13 @@ export function getMockUser(): UserToken {
 }
 
 // Legacy function for backward compatibility
-export async function signToken(payload: any): Promise<string> {
-  return createToken(payload)
+export async function signToken(payload: UserToken | UserData): Promise<string> {
+  // Convert UserData to UserToken if needed
+  if (!('permissions' in payload) || !payload.permissions) {
+    const userToken = createUserToken(payload as UserData)
+    return createToken(userToken)
+  }
+  return createToken(payload as UserToken)
 }
 
 // Helper function for API routes to verify and get user

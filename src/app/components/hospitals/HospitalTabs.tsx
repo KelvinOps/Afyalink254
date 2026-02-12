@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { Tabs, TabsList, TabsTrigger } from '@/app/components/ui/tabs'
 import { 
   Building, 
@@ -64,14 +63,11 @@ const tabs = [
 ]
 
 export function HospitalTabs({ hospitalId, activeTab }: HospitalTabsProps) {
-  const pathname = usePathname()
-
   return (
     <Tabs value={activeTab} className="w-full">
       <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
         {tabs.map((tab) => {
           const Icon = tab.icon
-          const isActive = activeTab === tab.id || pathname.includes(tab.id)
           
           return (
             <Link key={tab.id} href={tab.href(hospitalId)} className="w-full">

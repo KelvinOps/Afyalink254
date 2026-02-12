@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/app/contexts/AuthContext'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Input } from '@/app/components/ui/input'
@@ -17,7 +16,6 @@ import {
   AlertTriangle,
   Heart,
   Building,
-  MapPin,
   CheckCircle,
   XCircle
 } from 'lucide-react'
@@ -48,7 +46,6 @@ interface Department {
 }
 
 export default function NewTriagePage() {
-  const { user } = useAuth()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -345,9 +342,10 @@ export default function NewTriagePage() {
           }
         }, 100)
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating triage:', error)
-      setSubmitError(error.message || 'Network error. Please check your connection and try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Network error. Please check your connection and try again.'
+      setSubmitError(errorMessage)
     } finally {
       setLoading(false)
     }

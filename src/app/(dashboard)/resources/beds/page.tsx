@@ -7,9 +7,7 @@ import { Badge } from '@/app/components/ui/badge'
 import { Input } from '@/app/components/ui/input'
 import { 
   Bed, 
-  Plus, 
   Search, 
-  Filter,
   Download,
   RefreshCw
 } from 'lucide-react'

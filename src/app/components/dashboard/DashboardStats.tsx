@@ -7,9 +7,7 @@ import {
   Ambulance, 
   Activity, 
   TrendingUp, 
-  Clock,
-  CheckCircle,
-  AlertTriangle
+  Clock
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 

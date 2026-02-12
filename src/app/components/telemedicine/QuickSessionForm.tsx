@@ -13,7 +13,6 @@ import {
   SelectValue,
 } from '@/app/components/ui/select'
 import {
-  User,
   Phone,
   Mail,
   Calendar,
@@ -105,11 +104,11 @@ export function QuickSessionForm({ onSuccess }: QuickSessionFormProps) {
 
     try {
       // In a real app, you would make an API call here
-      const formData = {
-        patient: useExistingPatient ? null : patientData,
-        session: sessionData,
-        isQuickSession: true,
-      }
+      // const formData = {
+      //   patient: useExistingPatient ? null : patientData,
+      //   session: sessionData,
+      //   isQuickSession: true,
+      // }
 
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 800))

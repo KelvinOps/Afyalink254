@@ -1,10 +1,6 @@
-//triage/page.tsx
-
-
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAuth } from '@/app/contexts/AuthContext'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Badge } from '@/app/components/ui/badge'
@@ -55,10 +51,8 @@ interface TriageEntry {
 
 // Define valid triage levels for type safety
 const VALID_TRIAGE_LEVELS = ['IMMEDIATE', 'URGENT', 'LESS_URGENT', 'NON_URGENT'] as const
-type TriageLevel = typeof VALID_TRIAGE_LEVELS[number]
 
 export default function TriageListPage() {
-  const { user } = useAuth()
   const [triageEntries, setTriageEntries] = useState<TriageEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -85,7 +79,7 @@ export default function TriageListPage() {
 
       if (response.ok && data.triageEntries) {
         // Validate and transform data
-        const validatedEntries = data.triageEntries.map((entry: any) => ({
+        const validatedEntries = data.triageEntries.map((entry: TriageEntry & { triageLevel: string }) => ({
           id: entry.id || '',
           triageNumber: entry.triageNumber || 'UNKNOWN',
           patient: {
@@ -96,7 +90,7 @@ export default function TriageListPage() {
             dateOfBirth: entry.patient?.dateOfBirth || new Date().toISOString(),
             gender: entry.patient?.gender || 'UNKNOWN'
           },
-          triageLevel: VALID_TRIAGE_LEVELS.includes(entry.triageLevel) 
+          triageLevel: VALID_TRIAGE_LEVELS.includes(entry.triageLevel as typeof VALID_TRIAGE_LEVELS[number])
             ? entry.triageLevel 
             : 'NON_URGENT',
           status: entry.status || 'WAITING',
@@ -138,7 +132,7 @@ export default function TriageListPage() {
       ADMITTED: { variant: 'secondary', label: 'Admitted' },
       DISCHARGED: { variant: 'outline', label: 'Discharged' }
     }
-    const config = statusConfig[status] || { variant: 'outline', label: status }
+    const config = statusConfig[status] || { variant: 'outline' as const, label: status }
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
@@ -149,7 +143,7 @@ export default function TriageListPage() {
       LESS_URGENT: { variant: 'secondary', label: 'Less Urgent' },
       NON_URGENT: { variant: 'outline', label: 'Non-Urgent' }
     }
-    const config = triageConfig[triageLevel] || { variant: 'outline', label: triageLevel }
+    const config = triageConfig[triageLevel] || { variant: 'outline' as const, label: triageLevel }
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 

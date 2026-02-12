@@ -1,6 +1,7 @@
 // src/app/api/patients/export/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
+import { Prisma } from '@prisma/client'
 import * as XLSX from 'xlsx'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -21,6 +22,36 @@ interface PatientExportData {
   'SHA Number': string
   'Blood Type': string
   'County of Residence': string
+}
+
+// Type for comprehensive export data (CSV, Excel, JSON)
+interface PatientExportDataComprehensive {
+  'Patient ID': string
+  'Patient Number': string
+  'First Name': string
+  'Last Name': string
+  'Full Name': string
+  'Date of Birth': string
+  'Age': number | string
+  'Gender': string
+  'Phone': string
+  'National ID': string
+  'SHA Number': string
+  'SHA Status': string
+  'Contribution Status': string
+  'Current Status': string
+  'Current Hospital': string
+  'Hospital Code': string
+  'Triage Level': string
+  'Triage Status': string
+  'Last Arrival Time': string
+  'Blood Type': string
+  'Allergies': string
+  'Chronic Conditions': string
+  'County of Residence': string
+  'Sub County': string
+  'Created At': string
+  'Updated At': string
 }
 
 // Helper function to calculate age
@@ -91,7 +122,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Build query filters
-    const where: any = {}
+    const where: Prisma.PatientWhereInput = {}
 
     if (search && search.trim().length > 0) {
       where.OR = [
@@ -105,7 +136,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (status) {
-      where.currentStatus = status
+      where.currentStatus = status as Prisma.PatientWhereInput['currentStatus']
     }
 
     if (hospitalId) {
@@ -143,7 +174,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Format data for export
-    const formattedDataForCSVExcelJSON = patients.map(patient => {
+    const formattedDataForCSVExcelJSON: PatientExportDataComprehensive[] = patients.map(patient => {
       const triage = patient.triageEntries?.[0] || null
       return {
         'Patient ID': patient.id,
@@ -228,7 +259,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function exportCSV(data: any[]): Response {
+function exportCSV(data: PatientExportDataComprehensive[]): Response {
   try {
     if (data.length === 0) {
       return new Response('', {
@@ -240,7 +271,7 @@ function exportCSV(data: any[]): Response {
     }
 
     // Convert to CSV
-    const headers = Object.keys(data[0])
+    const headers = Object.keys(data[0]) as Array<keyof PatientExportDataComprehensive>
     const csvRows = [
       headers.join(','),
       ...data.map(row => 
@@ -272,7 +303,7 @@ function exportCSV(data: any[]): Response {
   }
 }
 
-function exportExcel(data: any[]): Response {
+function exportExcel(data: PatientExportDataComprehensive[]): Response {
   try {
     // Create workbook and worksheet
     const wb = XLSX.utils.book_new()
@@ -322,7 +353,7 @@ function exportExcel(data: any[]): Response {
   }
 }
 
-function exportJSON(data: any[]): Response {
+function exportJSON(data: PatientExportDataComprehensive[]): Response {
   try {
     return new Response(JSON.stringify(data, null, 2), {
       headers: {
@@ -512,12 +543,12 @@ function exportPDF(data: PatientExportData[], filters: {
         'Cache-Control': 'no-cache, no-store, must-revalidate'
       }
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('PDF export error:', {
-      message: error.message,
+      message: error instanceof Error ? error.message : 'Unknown error',
       dataLength: data?.length || 0,
       filters
     })
-    throw new Error(`Failed to generate PDF file: ${error.message}`)
+    throw new Error(`Failed to generate PDF file: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

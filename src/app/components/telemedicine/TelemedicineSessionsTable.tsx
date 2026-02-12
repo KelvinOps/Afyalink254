@@ -22,7 +22,6 @@ import {
   Video,
   Phone,
   Calendar,
-  User,
   Clock,
   MoreVertical,
   Eye,

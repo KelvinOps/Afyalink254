@@ -39,11 +39,8 @@ import {
   MapPin,
   AlertTriangle,
   Clock,
-  Users,
   Ambulance,
   Plus,
-  Search,
-  Filter,
   RefreshCw,
   Eye,
   MessageSquare,
@@ -111,7 +108,6 @@ export default function DispatchPage() {
   const { toast } = useToast()
   const [activeCalls, setActiveCalls] = useState<ActiveCall[]>([])
   const [recentDispatches, setRecentDispatches] = useState<DispatchCall[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [newCallDialogOpen, setNewCallDialogOpen] = useState(false)
   const [newCallData, setNewCallData] = useState<NewCallData>({
     callerPhone: '',
@@ -123,16 +119,8 @@ export default function DispatchPage() {
     patientCount: 1
   })
 
-  useEffect(() => {
-    fetchDispatchData()
-    // Simulate real-time updates
-    const interval = setInterval(fetchDispatchData, 30000) // Update every 30 seconds
-    return () => clearInterval(interval)
-  }, [])
-
   const fetchDispatchData = useCallback(async () => {
     try {
-      setIsLoading(true)
       const token = localStorage.getItem('token')
       
       const response = await fetch('/api/dispatch', {
@@ -156,10 +144,15 @@ export default function DispatchPage() {
         description: 'Failed to load dispatch data',
         variant: 'destructive'
       })
-    } finally {
-      setIsLoading(false)
     }
   }, [toast])
+
+  useEffect(() => {
+    fetchDispatchData()
+    // Simulate real-time updates
+    const interval = setInterval(fetchDispatchData, 30000) // Update every 30 seconds
+    return () => clearInterval(interval)
+  }, [fetchDispatchData])
 
   const handleNewCall = async () => {
     try {

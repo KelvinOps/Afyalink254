@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { StaffFormData, Staff } from '@/app/types/staff.types'
 import { StaffRole, EmploymentType, ContractType, FacilityType, Gender } from '@prisma/client'
@@ -17,12 +17,32 @@ import { CalendarIcon, Save, ArrowLeft } from 'lucide-react'
 import { cn } from '@/app/lib/utils'
 import { useToast } from '@/app/hooks/use-toast'
 
+interface Hospital {
+  id: string
+  name: string
+}
+
+interface Department {
+  id: string
+  name: string
+}
+
+interface HealthCenter {
+  id: string
+  name: string
+}
+
+interface Dispensary {
+  id: string
+  name: string
+}
+
 interface StaffFormProps {
   staff?: Staff
-  hospitals?: any[]
-  departments?: any[]
-  healthCenters?: any[]
-  dispensaries?: any[]
+  hospitals?: Hospital[]
+  departments?: Department[]
+  healthCenters?: HealthCenter[]
+  dispensaries?: Dispensary[]
 }
 
 export function StaffForm({ staff, hospitals, departments, healthCenters, dispensaries }: StaffFormProps) {
@@ -102,7 +122,7 @@ export function StaffForm({ staff, hospitals, departments, healthCenters, dispen
     }
   }
 
-  const handleInputChange = (field: keyof StaffFormData, value: any) => {
+  const handleInputChange = <K extends keyof StaffFormData>(field: K, value: StaffFormData[K]) => {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 

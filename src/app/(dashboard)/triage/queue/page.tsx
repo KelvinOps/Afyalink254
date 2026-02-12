@@ -1,9 +1,6 @@
-//(dashboard)/triage/queue/page.tsx
-
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAuth } from '@/app/contexts/AuthContext'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Badge } from '@/app/components/ui/badge'
@@ -35,7 +32,6 @@ interface QueueEntry {
 }
 
 export default function QueueManagementPage() {
-  const { user } = useAuth()
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -214,7 +210,7 @@ export default function QueueManagementPage() {
               </div>
             ) : (
               <div className="divide-y">
-                {[...byPriority.immediate, ...byPriority.urgent].map((entry, index) => (
+                {[...byPriority.immediate, ...byPriority.urgent].map((entry) => (
                   <div key={entry.id} className="p-4 hover:bg-muted/50">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
@@ -266,7 +262,7 @@ export default function QueueManagementPage() {
               </div>
             ) : (
               <div className="divide-y">
-                {[...byPriority.lessUrgent, ...byPriority.nonUrgent].map((entry, index) => (
+                {[...byPriority.lessUrgent, ...byPriority.nonUrgent].map((entry) => (
                   <div key={entry.id} className="p-4 hover:bg-muted/50">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">

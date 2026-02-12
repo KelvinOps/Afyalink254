@@ -1,7 +1,7 @@
 // src/app/(dashboard)/patients/[id]/history/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
@@ -14,7 +14,6 @@ import {
   Calendar,
   Clock,
   User,
-  Hospital,
   Stethoscope,
   AlertCircle,
   Heart,
@@ -26,10 +25,7 @@ import {
   Download,
   Printer,
   Phone,
-  Shield,
-  MapPin,
   Droplets,
-  Pill,
   Loader2,
   Search,
   Plus,
@@ -72,30 +68,15 @@ export default function PatientHistoryPage() {
   const [activeTab, setActiveTab] = useState('triage')
 
   // Safely get patientId from params
-  const getPatientId = () => {
+  const getPatientId = useCallback(() => {
     if (!params || typeof params !== 'object') return null
     const id = params.id
     return Array.isArray(id) ? id[0] : id
-  }
+  }, [params])
 
   const patientId = getPatientId()
 
-  useEffect(() => {
-    console.log('Patient ID from params:', patientId)
-    console.log('Params object:', params)
-    
-    if (!patientId) {
-      console.error('No patient ID found in params')
-      setError('Patient ID is required')
-      setLoading(false)
-      setInitialLoading(false)
-      return
-    }
-    
-    fetchPatientData()
-  }, [patientId, params])
-
-  const fetchPatientData = async () => {
+  const fetchPatientData = useCallback(async () => {
     const currentPatientId = getPatientId()
     if (!currentPatientId) {
       setError('Patient ID is required')
@@ -186,7 +167,22 @@ export default function PatientHistoryPage() {
       setLoading(false)
       setInitialLoading(false)
     }
-  }
+  }, [getPatientId])
+
+  useEffect(() => {
+    console.log('Patient ID from params:', patientId)
+    console.log('Params object:', params)
+    
+    if (!patientId) {
+      console.error('No patient ID found in params')
+      setError('Patient ID is required')
+      setLoading(false)
+      setInitialLoading(false)
+      return
+    }
+    
+    fetchPatientData()
+  }, [patientId, params, fetchPatientData])
 
   const fetchPatientHistory = async (page = 1) => {
     const currentPatientId = getPatientId()

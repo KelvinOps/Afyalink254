@@ -1,77 +1,18 @@
 import { prisma } from '@/app/lib/prisma'
-import { StaffFormData, StaffSearchParams, StaffStats, ShiftAssignment } from '@/app/types/staff.types'
+import { StaffFormData, StaffSearchParams, StaffStats } from '@/app/types/staff.types'
+import { Prisma, StaffRole, FacilityType } from '@prisma/client'
 
 export class StaffService {
-  // Get staff with pagination and filtering
   static async getStaff(params: StaffSearchParams) {
-    const {
-      page = 1,
-      limit = 50,
-      search,
-      role,
-      facilityType,
-      hospitalId,
-      departmentId,
-      isActive,
-      isOnDuty
-    } = params
-
+    const { page = 1, limit = 50, search, role, facilityType, hospitalId, departmentId, isActive, isOnDuty } = params
     const skip = (page - 1) * limit
 
-    let where: any = {}
-
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { staffNumber: { contains: search, mode: 'insensitive' } }
-      ]
-    }
-
-    if (role) where.role = role
-    if (facilityType) where.facilityType = facilityType
-    if (hospitalId) where.hospitalId = hospitalId
-    if (departmentId) where.departmentId = departmentId
-    if (isActive !== undefined) where.isActive = isActive
-    if (isOnDuty !== undefined) where.isOnDuty = isOnDuty
+    const where: Prisma.StaffWhereInput = this.buildWhereClause({ search, role, facilityType, hospitalId, departmentId, isActive, isOnDuty })
 
     const [staff, total] = await Promise.all([
       prisma.staff.findMany({
         where,
-        include: {
-          hospital: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              countyId: true
-            }
-          },
-          healthCenter: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              countyId: true
-            }
-          },
-          dispensary: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              countyId: true
-            }
-          },
-          department: {
-            select: {
-              id: true,
-              name: true,
-              type: true
-            }
-          }
-        },
+        include: this.getStaffRelations(),
         orderBy: [
           { isActive: 'desc' },
           { lastName: 'asc' },
@@ -94,56 +35,21 @@ export class StaffService {
     }
   }
 
-  // Get staff by ID
   static async getStaffById(id: string) {
     return prisma.staff.findUnique({
       where: { id },
-      include: {
-        hospital: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        healthCenter: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        dispensary: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        department: {
-          select: {
-            id: true,
-            name: true,
-            type: true
-          }
-        }
-      }
+      include: this.getStaffRelations()
     })
   }
 
-  // Create new staff
   static async createStaff(data: StaffFormData) {
-    const staffCount = await prisma.staff.count()
-    const staffNumber = `STAFF-${String(staffCount + 1).padStart(6, '0')}`
-
+    const staffNumber = await this.generateStaffNumber()
+    
     return prisma.staff.create({
       data: {
         ...data,
         staffNumber,
-        userId: data.email, // Using email as userId
+        userId: data.email,
         hireDate: new Date(data.hireDate),
         currentCaseload: 0,
         pendingSalaryMonths: 0,
@@ -151,43 +57,10 @@ export class StaffService {
         shiftStart: null,
         shiftEnd: null
       },
-      include: {
-        hospital: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        healthCenter: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        dispensary: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        department: {
-          select: {
-            id: true,
-            name: true,
-            type: true
-          }
-        }
-      }
+      include: this.getStaffRelations()
     })
   }
 
-  // Update staff
   static async updateStaff(id: string, data: Partial<StaffFormData>) {
     return prisma.staff.update({
       where: { id },
@@ -196,43 +69,10 @@ export class StaffService {
         hireDate: data.hireDate ? new Date(data.hireDate) : undefined,
         updatedAt: new Date()
       },
-      include: {
-        hospital: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        healthCenter: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        dispensary: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        department: {
-          select: {
-            id: true,
-            name: true,
-            type: true
-          }
-        }
-      }
+      include: this.getStaffRelations()
     })
   }
 
-  // Delete staff (soft delete)
   static async deleteStaff(id: string) {
     return prisma.staff.update({
       where: { id },
@@ -243,24 +83,12 @@ export class StaffService {
     })
   }
 
-  // Get staff statistics
   static async getStaffStats(hospitalId?: string): Promise<StaffStats> {
-    let where: any = { isActive: true }
+    const where: Prisma.StaffWhereInput = { isActive: true }
+    if (hospitalId) where.hospitalId = hospitalId
 
-    if (hospitalId) {
-      where.hospitalId = hospitalId
-    }
-
-    const [
-      totalStaff,
-      activeStaff,
-      onDutyStaff,
-      byRole,
-      byDepartment,
-      caseloadStats
-    ] = await Promise.all([
-      prisma.staff.count({ where: { ...where, isActive: true } }),
-      prisma.staff.count({ where: { ...where, isActive: true } }),
+    const [totalStaff, onDutyStaff, byRole, byDepartment, caseloadStats] = await Promise.all([
+      prisma.staff.count({ where }),
       prisma.staff.count({ where: { ...where, isOnDuty: true } }),
       prisma.staff.groupBy({
         by: ['role'],
@@ -279,129 +107,34 @@ export class StaffService {
       })
     ])
 
-    // Get department names
-    const departmentIds = byDepartment.map(d => d.departmentId).filter(Boolean) as string[]
-    const departments = departmentIds.length > 0 ? await prisma.department.findMany({
-      where: { id: { in: departmentIds } },
-      select: { id: true, name: true }
-    }) : []
-
-    const departmentMap = new Map(departments.map(d => [d.id, d.name]))
+    const departmentNames = await this.getDepartmentNames(byDepartment)
+    const highCaseloadCount = await this.getHighCaseloadCount(where)
 
     return {
       totalStaff,
-      activeStaff,
+      activeStaff: totalStaff,
       onDutyStaff,
       byRole: byRole.map(r => ({
         role: r.role,
         count: r._count.role
       })),
       byDepartment: byDepartment.map(d => ({
-        department: d.departmentId ? departmentMap.get(d.departmentId) || 'Unknown' : 'No Department',
+        department: d.departmentId ? departmentNames.get(d.departmentId) || 'Unknown' : 'No Department',
         count: d._count.departmentId
       })),
       averageCaseload: caseloadStats._avg.currentCaseload || 0,
-      staffWithHighCaseload: await prisma.staff.count({
-        where: {
-          ...where,
-          currentCaseload: { gt: 8 } // Consider >8 as high caseload
-        }
-      })
+      staffWithHighCaseload: highCaseloadCount
     }
   }
 
-  // Assign shift to staff - TEMPORARILY DISABLED until StaffSchedule model is added
-  static async assignShift(staffId: string, assignment: ShiftAssignment) {
-    throw new Error('Staff schedule functionality is temporarily unavailable. Please add StaffSchedule model to Prisma schema.')
-    
-    // This code will work once you add the StaffSchedule model to your Prisma schema
-    /*
-    // Check for conflicts
-    const conflictingSchedule = await prisma.staffSchedule.findFirst({
-      where: {
-        staffId,
-        isActive: true,
-        OR: [
-          {
-            startTime: { lt: new Date(assignment.endTime) },
-            endTime: { gt: new Date(assignment.startTime) }
-          }
-        ]
-      }
-    })
-
-    if (conflictingSchedule) {
-      throw new Error('Schedule conflict: Staff already has a shift during this time')
-    }
-
-    return prisma.staffSchedule.create({
-      data: {
-        staffId,
-        startTime: new Date(assignment.startTime),
-        endTime: new Date(assignment.endTime),
-        shiftType: assignment.shiftType,
-        departmentId: assignment.departmentId,
-        notes: assignment.notes,
-        isActive: true
-      },
-      include: {
-        department: {
-          select: {
-            id: true,
-            name: true,
-            type: true
-          }
-        }
-      }
-    })
-    */
+  static async assignShift() {
+    throw new Error('Staff schedule functionality requires StaffSchedule model in Prisma schema.')
   }
 
-  // Get staff schedule - TEMPORARILY DISABLED until StaffSchedule model is added
-  static async getStaffSchedule(staffId: string, startDate?: Date, endDate?: Date) {
-    throw new Error('Staff schedule functionality is temporarily unavailable. Please add StaffSchedule model to Prisma schema.')
-    
-    // This code will work once you add the StaffSchedule model to your Prisma schema
-    /*
-    let where: any = {
-      staffId,
-      isActive: true
-    }
-
-    if (startDate && endDate) {
-      where.OR = [
-        {
-          startTime: {
-            gte: startDate,
-            lte: endDate
-          }
-        },
-        {
-          endTime: {
-            gte: startDate,
-            lte: endDate
-          }
-        }
-      ]
-    }
-
-    return prisma.staffSchedule.findMany({
-      where,
-      include: {
-        department: {
-          select: {
-            id: true,
-            name: true,
-            type: true
-          }
-        }
-      },
-      orderBy: { startTime: 'asc' }
-    })
-    */
+  static async getStaffSchedule() {
+    throw new Error('Staff schedule functionality requires StaffSchedule model in Prisma schema.')
   }
 
-  // Update staff duty status
   static async updateDutyStatus(staffId: string, isOnDuty: boolean, shiftStart?: Date, shiftEnd?: Date) {
     return prisma.staff.update({
       where: { id: staffId },
@@ -414,8 +147,7 @@ export class StaffService {
     })
   }
 
-  // Search staff by name or staff number
-  static async searchStaff(query: string, limit: number = 10) {
+  static async searchStaff(query: string, limit = 10) {
     return prisma.staff.findMany({
       where: {
         isActive: true,
@@ -433,42 +165,18 @@ export class StaffService {
         staffNumber: true,
         email: true,
         role: true,
-        department: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        hospital: {
-          select: {
-            id: true,
-            name: true,
-            countyId: true
-          }
-        },
-        healthCenter: {
-          select: {
-            id: true,
-            name: true,
-            countyId: true
-          }
-        },
-        dispensary: {
-          select: {
-            id: true,
-            name: true,
-            countyId: true
-          }
-        }
+        department: { select: { id: true, name: true } },
+        hospital: { select: { id: true, name: true, countyId: true } },
+        healthCenter: { select: { id: true, name: true, countyId: true } },
+        dispensary: { select: { id: true, name: true, countyId: true } }
       },
       take: limit,
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }]
     })
   }
 
-  // Get staff by county for access control
   static async getStaffByCounty(countyId: string, params: StaffSearchParams = {}) {
-    const where: any = {
+    const where: Prisma.StaffWhereInput = {
       isActive: true,
       OR: [
         { hospital: { countyId } },
@@ -479,55 +187,94 @@ export class StaffService {
 
     if (params.search) {
       where.OR = [
-        ...where.OR,
         { firstName: { contains: params.search, mode: 'insensitive' } },
         { lastName: { contains: params.search, mode: 'insensitive' } },
         { email: { contains: params.search, mode: 'insensitive' } }
       ]
     }
 
-    const staff = await prisma.staff.findMany({
+    return prisma.staff.findMany({
       where,
-      include: {
-        hospital: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        healthCenter: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        dispensary: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            countyId: true
-          }
-        },
-        department: {
-          select: {
-            id: true,
-            name: true,
-            type: true
-          }
-        }
-      },
+      include: this.getStaffRelations(),
       orderBy: [
         { isActive: 'desc' },
         { lastName: 'asc' },
         { firstName: 'asc' }
       ]
     })
+  }
 
-    return staff
+  private static buildWhereClause(filters: {
+    search?: string
+    role?: string
+    facilityType?: string
+    hospitalId?: string
+    departmentId?: string
+    isActive?: boolean
+    isOnDuty?: boolean
+  }): Prisma.StaffWhereInput {
+    const where: Prisma.StaffWhereInput = {}
+
+    if (filters.search) {
+      where.OR = [
+        { firstName: { contains: filters.search, mode: 'insensitive' } },
+        { lastName: { contains: filters.search, mode: 'insensitive' } },
+        { email: { contains: filters.search, mode: 'insensitive' } },
+        { staffNumber: { contains: filters.search, mode: 'insensitive' } }
+      ]
+    }
+
+    if (filters.role) {
+      where.role = { equals: filters.role as StaffRole }
+    }
+    
+    if (filters.facilityType) {
+      where.facilityType = { equals: filters.facilityType as FacilityType }
+    }
+    
+    if (filters.hospitalId) where.hospitalId = filters.hospitalId
+    if (filters.departmentId) where.departmentId = filters.departmentId
+    if (filters.isActive !== undefined) where.isActive = filters.isActive
+    if (filters.isOnDuty !== undefined) where.isOnDuty = filters.isOnDuty
+
+    return where
+  }
+
+  private static getStaffRelations() {
+    return {
+      hospital: { select: { id: true, name: true, code: true, countyId: true } },
+      healthCenter: { select: { id: true, name: true, code: true, countyId: true } },
+      dispensary: { select: { id: true, name: true, code: true, countyId: true } },
+      department: { select: { id: true, name: true, type: true } }
+    }
+  }
+
+  private static async generateStaffNumber(): Promise<string> {
+    const staffCount = await prisma.staff.count()
+    return `STAFF-${String(staffCount + 1).padStart(6, '0')}`
+  }
+
+  private static async getDepartmentNames(byDepartment: { departmentId: string | null, _count: { departmentId: number } }[]): Promise<Map<string, string>> {
+    const departmentIds = byDepartment.map(d => d.departmentId).filter(Boolean) as string[]
+    
+    if (departmentIds.length === 0) {
+      return new Map()
+    }
+
+    const departments = await prisma.department.findMany({
+      where: { id: { in: departmentIds } },
+      select: { id: true, name: true }
+    })
+
+    return new Map(departments.map(d => [d.id, d.name]))
+  }
+
+  private static async getHighCaseloadCount(where: Prisma.StaffWhereInput): Promise<number> {
+    return prisma.staff.count({
+      where: {
+        ...where,
+        currentCaseload: { gt: 8 }
+      }
+    })
   }
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -15,10 +15,13 @@ import {
   Users, 
   Ambulance, 
   MapPin,
-  Phone,
-  User,
-  Calendar
+  Phone
 } from 'lucide-react';
+
+interface Coordinates {
+  lat: number;
+  lng: number;
+}
 
 interface Emergency {
   id: string;
@@ -27,7 +30,7 @@ interface Emergency {
   severity: string;
   status: string;
   location: string;
-  coordinates: any;
+  coordinates: Coordinates | null;
   description: string;
   cause: string;
   estimatedCasualties: number;
@@ -104,13 +107,7 @@ export default function EmergencyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (params.id) {
-      fetchEmergency();
-    }
-  }, [params.id]);
-
-  const fetchEmergency = async () => {
+  const fetchEmergency = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/emergencies/${params.id}`);
@@ -122,7 +119,13 @@ export default function EmergencyDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id]);
+
+  useEffect(() => {
+    if (params.id) {
+      fetchEmergency();
+    }
+  }, [params.id, fetchEmergency]);
 
   const getStatusConfig = (status: string) => {
     const config = {

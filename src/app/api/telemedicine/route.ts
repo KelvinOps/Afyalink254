@@ -17,13 +17,13 @@ const createSessionSchema = z.object({
   chiefComplaint: z.string().min(1, 'Chief complaint is required'),
   presentingHistory: z.string().optional(),
   scheduledTime: z.string().optional(),
-  vitalSigns: z.record(z.any()).optional(),
+  vitalSigns: z.record(z.unknown()).optional(),
 })
 
 const updateSessionSchema = z.object({
   diagnosis: z.string().optional(),
   recommendations: z.string().optional(),
-  prescriptions: z.array(z.any()).optional(),
+  prescriptions: z.array(z.unknown()).optional(),
   requiresInPersonVisit: z.boolean().optional(),
   requiresReferral: z.boolean().optional(),
   status: z.enum(['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'TECHNICAL_FAILURE']).optional(),
@@ -35,10 +35,56 @@ const updateSessionSchema = z.object({
   videoQuality: z.number().min(1).max(5).optional(),
 })
 
-// Mock service functions (replace with your actual database calls)
+// ── Shared types ────────────────────────────────────────────────────────────
+
+type SessionStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW' | 'TECHNICAL_FAILURE'
+
+interface TelemedicineSession {
+  id: string
+  sessionNumber: string
+  patientId: string
+  specialistId: string
+  patientName?: string
+  specialistName?: string
+  status: SessionStatus
+  scheduledTime: string
+  createdAt: string
+  updatedAt?: string
+}
+
+interface SessionListResult {
+  sessions: TelemedicineSession[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
+interface SessionQueryOptions {
+  status?: string
+  page: number
+  limit: number
+  search: string
+  userId: string
+}
+
+interface AuditLogData {
+  action: string
+  entityType: string
+  entityId: string
+  userId: string
+  userRole?: string
+  userName?: string | null
+  description: string
+  changes?: Record<string, unknown>
+  success?: boolean
+  errorMessage?: string
+}
+
+// ── Mock service ─────────────────────────────────────────────────────────────
+
 const mockTelemedicineService = {
-  async getTelemedicineSessions(options: any) {
-    // Mock data
+  async getTelemedicineSessions(_options: SessionQueryOptions): Promise<SessionListResult> {
     return {
       sessions: [
         {
@@ -51,27 +97,29 @@ const mockTelemedicineService = {
           status: 'COMPLETED',
           scheduledTime: new Date().toISOString(),
           createdAt: new Date().toISOString(),
-        }
+        },
       ],
       total: 1,
       page: 1,
       limit: 50,
-      totalPages: 1
+      totalPages: 1,
     }
   },
 
-  async createTelemedicineSession(data: any) {
+  async createTelemedicineSession(
+    data: z.infer<typeof createSessionSchema> & { createdBy: string }
+  ): Promise<TelemedicineSession> {
     return {
       id: `session-${Date.now()}`,
       sessionNumber: `TM-${Date.now().toString().slice(-6)}`,
       ...data,
       status: 'SCHEDULED',
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     }
   },
 
-  async getTelemedicineSession(sessionId: string) {
+  async getTelemedicineSession(sessionId: string): Promise<TelemedicineSession> {
     return {
       id: sessionId,
       sessionNumber: 'TM-2024-001',
@@ -85,25 +133,31 @@ const mockTelemedicineService = {
     }
   },
 
-  async updateTelemedicineSession(sessionId: string, data: any) {
+  async updateTelemedicineSession(
+    sessionId: string,
+    data: z.infer<typeof updateSessionSchema>
+  ): Promise<Partial<TelemedicineSession>> {
     return {
       id: sessionId,
       ...data,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     }
-  }
+  },
 }
 
-// Mock audit log function
-async function auditLog(data: any) {
+// ── Audit log helper ──────────────────────────────────────────────────────────
+
+async function auditLog(data: AuditLogData): Promise<boolean> {
   console.log('Audit log:', data)
   return true
 }
 
+// ── Route handlers ────────────────────────────────────────────────────────────
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -119,10 +173,9 @@ export async function GET(request: NextRequest) {
       page,
       limit,
       search,
-      userId: session.user.id
+      userId: session.user.id,
     })
 
-    // Audit log
     await auditLog({
       action: 'READ',
       entityType: 'TELEMEDICINE_SESSION',
@@ -136,7 +189,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(sessions)
   } catch (error) {
     console.error('Error fetching telemedicine sessions:', error)
-    
+
     await auditLog({
       action: 'READ',
       entityType: 'TELEMEDICINE_SESSION',
@@ -159,12 +212,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
+    const body: unknown = await request.json()
     const validatedData = createSessionSchema.parse(body)
 
     const telemedicineSession = await mockTelemedicineService.createTelemedicineSession({
@@ -172,7 +225,6 @@ export async function POST(request: NextRequest) {
       createdBy: session.user.id,
     })
 
-    // Audit log
     await auditLog({
       action: 'CREATE',
       entityType: 'TELEMEDICINE_SESSION',
@@ -187,7 +239,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(telemedicineSession, { status: 201 })
   } catch (error) {
     console.error('Error creating telemedicine session:', error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Invalid data', details: error.errors },
@@ -217,14 +269,14 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
+    const body: unknown = await request.json()
     const validatedData = updateSessionSchema.parse(body)
-    
+
     const { searchParams } = new URL(request.url)
     const sessionId = searchParams.get('sessionId')
 
@@ -240,7 +292,6 @@ export async function PUT(request: NextRequest) {
       validatedData
     )
 
-    // Audit log
     await auditLog({
       action: 'UPDATE',
       entityType: 'TELEMEDICINE_SESSION',
@@ -255,7 +306,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(telemedicineSession)
   } catch (error) {
     console.error('Error updating telemedicine session:', error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Invalid data', details: error.errors },

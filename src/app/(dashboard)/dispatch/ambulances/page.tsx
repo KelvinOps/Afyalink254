@@ -1,7 +1,7 @@
 // src/app/dispatch/ambulances/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Button } from '@/app/components/ui/button'
@@ -48,6 +48,12 @@ import {
   Shield
 } from 'lucide-react'
 import { useAuth } from '@/app/contexts/AuthContext'
+import { UserToken } from '@/app/lib/auth'
+
+// Extended user type to include facilityName
+interface ExtendedUserToken extends UserToken {
+  facilityName?: string
+}
 
 // Simple toast implementation
 const useSimpleToast = () => {
@@ -119,15 +125,8 @@ export default function AmbulancesPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [ambulanceTypeFilter, setAmbulanceTypeFilter] = useState<string>('all')
 
-  useEffect(() => {
-    fetchAmbulances()
-  }, [])
-
-  useEffect(() => {
-    filterAmbulances()
-  }, [searchTerm, statusFilter, typeFilter, ambulanceTypeFilter, ambulances])
-
-  const fetchAmbulances = async () => {
+  // Wrap fetchAmbulances in useCallback to stabilize its reference
+  const fetchAmbulances = useCallback(async () => {
     try {
       setIsLoading(true)
       const token = localStorage.getItem('accessToken')
@@ -183,9 +182,10 @@ export default function AmbulancesPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast, router, logout])
 
-  const filterAmbulances = () => {
+  // Wrap filterAmbulances in useCallback to stabilize its reference
+  const filterAmbulances = useCallback(() => {
     let filtered = [...ambulances]
 
     // Apply search filter
@@ -217,7 +217,15 @@ export default function AmbulancesPage() {
     }
 
     setFilteredAmbulances(filtered)
-  }
+  }, [ambulances, searchTerm, statusFilter, typeFilter, ambulanceTypeFilter])
+
+  useEffect(() => {
+    fetchAmbulances()
+  }, [fetchAmbulances])
+
+  useEffect(() => {
+    filterAmbulances()
+  }, [filterAmbulances])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -556,7 +564,7 @@ export default function AmbulancesPage() {
               <CardTitle>Ambulance Fleet</CardTitle>
               <CardDescription>
                 {filteredAmbulances.length} of {ambulances.length} ambulances shown
-                {user?.facilityName && ` • ${user.facilityName}`}
+                {(user as ExtendedUserToken)?.facilityName && ` • ${(user as ExtendedUserToken).facilityName}`}
               </CardDescription>
             </div>
             {filteredAmbulances.length > 0 && (

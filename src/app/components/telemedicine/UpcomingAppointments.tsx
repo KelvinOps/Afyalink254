@@ -11,7 +11,6 @@ import {
   Phone,
   AlertCircle,
   ChevronRight,
-  Filter,
   Search,
 } from 'lucide-react'
 import { Input } from '@/app/components/ui/input'

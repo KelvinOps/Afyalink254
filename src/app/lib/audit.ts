@@ -1,40 +1,47 @@
-//app/lib/audit.ts
-
 import { prisma } from './prisma'
-import { Prisma } from '@prisma/client'
+import { Prisma, AuditAction } from '@prisma/client'
 
-// Use the complete enum from your Prisma schema
-export enum AuditAction {
-  CREATE = 'CREATE',
-  READ = 'READ', 
-  UPDATE = 'UPDATE',
-  DELETE = 'DELETE',
-  LOGIN = 'LOGIN',
-  LOGOUT = 'LOGOUT',
-  APPROVE = 'APPROVE',
-  REJECT = 'REJECT',
-  TRANSFER = 'TRANSFER',
-  DISCHARGE = 'DISCHARGE',
-  PRESCRIBE = 'PRESCRIBE',
-  SUBMIT_CLAIM = 'SUBMIT_CLAIM',
-  CANCEL = 'CANCEL',
-  OVERRIDE = 'OVERRIDE'
+// Re-export AuditAction from Prisma for convenience
+export { AuditAction }
+
+// Define proper types for changes
+export interface ChangesData {
+  [key: string]: unknown
 }
 
 export interface AuditLogData {
-  action: AuditAction | string;
+  action: AuditAction; // Only accept the enum, not arbitrary strings
   entityType: string;
   entityId: string;
   userId: string;
   userRole: string;
   userName?: string;
   description: string;
-  changes?: any;
+  changes?: ChangesData;
   ipAddress?: string;
   userAgent?: string;
   facilityId?: string;
   success?: boolean;
   errorMessage?: string;
+}
+
+// Define types for request objects (adjust based on your framework)
+export interface UserRequest {
+  user?: {
+    id: string;
+    role: string;
+    name?: string;
+    facilityId?: string;
+  };
+  method?: string;
+  url?: string;
+  headers?: {
+    'x-forwarded-for'?: string;
+    'user-agent'?: string;
+  };
+  socket?: {
+    remoteAddress?: string;
+  };
 }
 
 // Queue for background audit logging
@@ -91,9 +98,10 @@ async function processAuditQueue() {
 async function auditLogDirect(data: AuditLogData) {
   try {
     // Handle changes field properly for Prisma JSON type
-    let changesData: any = Prisma.DbNull
+    // Use InputJsonValue for input and DbNull for null values
+    let changesData: Prisma.InputJsonValue | Prisma.NullTypes.DbNull = Prisma.DbNull
     if (data.changes) {
-      changesData = data.changes
+      changesData = data.changes as Prisma.InputJsonValue
     }
 
     // Create the audit log entry with a single attempt
@@ -102,7 +110,7 @@ async function auditLogDirect(data: AuditLogData) {
         userId: data.userId,
         userRole: data.userRole,
         userName: data.userName || 'System',
-        action: data.action as any,
+        action: data.action,
         entityType: data.entityType,
         entityId: data.entityId,
         description: data.description,
@@ -155,7 +163,7 @@ export async function getAuditLogs(options: {
   userId?: string;
   entityType?: string;
   entityId?: string;
-  action?: AuditAction | string;
+  action?: AuditAction; // Only accept the enum
   startDate?: Date;
   endDate?: Date;
   facilityId?: string;
@@ -180,7 +188,7 @@ export async function getAuditLogs(options: {
   if (entityType) where.entityType = entityType
   if (entityId) where.entityId = entityId
   if (action) {
-    where.action = action as Prisma.EnumAuditActionFilter<"AuditLog">
+    where.action = action
   }
   if (facilityId) where.facilityId = facilityId
   
@@ -275,7 +283,7 @@ export async function searchAuditLogs(query: string, options: {
  */
 export async function getAuditStatistics(timeframe: '24h' | '7d' | '30d' = '24h', facilityId?: string) {
   const now = new Date()
-  let startDate = new Date()
+  const startDate = new Date()
 
   switch (timeframe) {
     case '24h':
@@ -542,7 +550,7 @@ export const auditActions = {
     })
   },
 
-  logPatientUpdate(patientId: string, userId: string, userRole: string, userName: string, changes: any, facilityId?: string) {
+  logPatientUpdate(patientId: string, userId: string, userRole: string, userName: string, changes: ChangesData, facilityId?: string) {
     queueAuditLog({
       action: AuditAction.UPDATE,
       entityType: 'PATIENT',
@@ -706,7 +714,7 @@ export const auditActions = {
     })
   },
 
-  logStaffUpdate(staffId: string, userId: string, userRole: string, userName: string, changes: any, facilityId?: string) {
+  logStaffUpdate(staffId: string, userId: string, userRole: string, userName: string, changes: ChangesData, facilityId?: string) {
     queueAuditLog({
       action: AuditAction.UPDATE,
       entityType: 'STAFF',
@@ -747,22 +755,28 @@ export const auditActions = {
   }
 }
 
+// Type for middleware handler
+export type AuditMiddlewareHandler = (req: UserRequest, ...args: unknown[]) => Promise<unknown>
+
 /**
  * Middleware for automatic audit logging of API requests
  */
-export function createAuditMiddleware(handler: Function, options?: {
-  entityType?: string;
-  action?: AuditAction;
-  extractEntityId?: (req: any) => string;
-}) {
-  return async (req: any, ...args: any[]) => {
+export function createAuditMiddleware(
+  handler: AuditMiddlewareHandler, 
+  options?: {
+    entityType?: string;
+    action?: AuditAction;
+    extractEntityId?: (req: UserRequest) => string;
+  }
+) {
+  return async (req: UserRequest, ...args: unknown[]) => {
     let success = true
     let errorMessage: string | undefined
 
     try {
       const result = await handler(req, ...args)
       return result
-    } catch (error) {
+    } catch (error: unknown) {
       success = false
       errorMessage = error instanceof Error ? error.message : 'Unknown error'
       throw error
@@ -772,6 +786,10 @@ export function createAuditMiddleware(handler: Function, options?: {
       const userName = req.user?.name || 'Unknown User'
       const facilityId = req.user?.facilityId
       const entityId = options?.extractEntityId?.(req) || 'unknown'
+      const method = req.method || 'GET'
+      const url = req.url || 'unknown'
+      const ipAddress = req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress
+      const userAgent = req.headers?.['user-agent']
 
       // Use queue for middleware
       queueAuditLog({
@@ -781,9 +799,9 @@ export function createAuditMiddleware(handler: Function, options?: {
         userId,
         userRole,
         userName,
-        description: `API ${req.method} request to ${req.url}`,
-        ipAddress: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
-        userAgent: req.headers['user-agent'],
+        description: `API ${method} request to ${url}`,
+        ipAddress,
+        userAgent,
         facilityId,
         success,
         errorMessage,

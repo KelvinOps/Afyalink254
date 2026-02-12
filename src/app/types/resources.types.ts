@@ -26,6 +26,46 @@ export type ResourceStatus =
   | 'DEPLETED'
   | 'EXPIRED'
 
+export interface ResourceSpecifications {
+  brand?: string;
+  model?: string;
+  serialNumber?: string;
+  manufacturer?: string;
+  manufactureDate?: string;
+  warrantyExpiry?: string;
+  voltage?: string;
+  powerRequirements?: string;
+  dimensions?: {
+    length?: number;
+    width?: number;
+    height?: number;
+    unit?: 'cm' | 'm' | 'in';
+  };
+  weight?: {
+    value: number;
+    unit: 'kg' | 'g' | 'lb';
+  };
+  certifications?: string[];
+  features?: string[];
+  consumables?: Array<{
+    name: string;
+    quantity: number;
+    unit: string;
+  }>;
+  calibrationSchedule?: string;
+  calibrationLast?: string;
+  calibrationNext?: string;
+  operatingTemperature?: string;
+  storageTemperature?: string;
+  shelfLife?: string;
+  concentration?: string;
+  volume?: string;
+  dosage?: string;
+  administrationRoute?: string;
+  storageConditions?: string;
+  [key: string]: string | number | boolean | object | string[] | object[] | undefined;
+}
+
 export interface Resource {
   id: string
   name: string
@@ -67,7 +107,7 @@ export interface Resource {
   batchNumber?: string
   unitCost?: number
   totalValue?: number
-  specifications?: any
+  specifications?: ResourceSpecifications
   notes?: string
   usageHistory?: Array<{
     date: string

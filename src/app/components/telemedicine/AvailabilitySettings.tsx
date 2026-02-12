@@ -82,12 +82,14 @@ export function AvailabilitySettings() {
   const [autoConfirm, setAutoConfirm] = useState(false)
   const [sendReminders, setSendReminders] = useState(true)
 
-  const handleWorkingHoursChange = (index: number, field: keyof WorkingHours, value: any) => {
+  const handleWorkingHoursChange = (index: number, field: keyof WorkingHours, value: string | number | boolean) => {
     const updatedHours = [...workingHours]
     if (field === 'enabled') {
       updatedHours[index][field] = value as boolean
+    } else if (field === 'maxSessions') {
+      updatedHours[index][field] = value as number
     } else {
-      updatedHours[index][field] = value as string & number
+      updatedHours[index][field] = value as string
     }
     setWorkingHours(updatedHours)
   }
@@ -127,16 +129,16 @@ export function AvailabilitySettings() {
 
     try {
       // In a real app, you would save to your API
-      const settings = {
-        workingHours,
-        timeSlots,
-        breakTimes,
-        bufferTime,
-        maxDailySessions,
-        advanceBookingDays,
-        autoConfirm,
-        sendReminders,
-      }
+      // const settings = {
+      //   workingHours,
+      //   timeSlots,
+      //   breakTimes,
+      //   bufferTime,
+      //   maxDailySessions,
+      //   advanceBookingDays,
+      //   autoConfirm,
+      //   sendReminders,
+      // }
 
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000))
@@ -409,9 +411,9 @@ export function AvailabilitySettings() {
                     <Label className="text-sm">Type</Label>
                     <Select
                       value={slot.sessionType}
-                      onValueChange={(value: TimeSlot['sessionType']) => {
+                      onValueChange={(value) => {
                         const updatedSlots = timeSlots.map(s =>
-                          s.id === slot.id ? { ...s, sessionType: value } : s
+                          s.id === slot.id ? { ...s, sessionType: value as TimeSlot['sessionType'] } : s
                         )
                         setTimeSlots(updatedSlots)
                       }}

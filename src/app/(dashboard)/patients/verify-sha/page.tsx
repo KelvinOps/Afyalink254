@@ -19,13 +19,9 @@ import {
   AlertTriangle,
   Loader2,
   Download,
-  Calendar,
   DollarSign,
-  TrendingUp,
   Activity,
-  Clock,
-  Award,
-  FileCheck
+  Award
 } from 'lucide-react'
 
 interface Patient {
@@ -600,9 +596,247 @@ export default function SHAVerificationPage() {
               </Card>
             </TabsContent>
 
-            {/* Additional tabs for Claims History, Financial, and Member Details would go here */}
-            {/* ... (similar structure to above tabs) ... */}
-            
+            {/* Claims History Tab */}
+            <TabsContent value="claims">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Claims History</CardTitle>
+                  <CardDescription>
+                    Recent SHA claims and their status
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {verificationData.patient.shaClaims.length > 0 ? (
+                    <div className="space-y-4">
+                      {verificationData.patient.shaClaims.slice(0, 5).map((claim) => (
+                        <div key={claim.id} className="border rounded-lg p-4">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium">Claim #{claim.claimNumber}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {formatDate(claim.serviceDate)} • {claim.serviceType}
+                              </p>
+                              <p className="text-sm mt-1">{claim.diagnosis}</p>
+                            </div>
+                            <div className="text-right">
+                              <Badge variant={
+                                claim.status === 'PAID' ? 'default' :
+                                claim.status === 'PENDING' ? 'secondary' :
+                                claim.status === 'REJECTED' ? 'destructive' : 'outline'
+                              }>
+                                {claim.status}
+                              </Badge>
+                              <p className="text-sm font-medium mt-2">
+                                {formatCurrency(claim.totalAmount)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">
+                      No claims found for this member
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Financial Tab */}
+            <TabsContent value="financial">
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Financial Summary</CardTitle>
+                    <CardDescription>
+                      Claims and payment overview
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Claims Submitted</span>
+                        <span className="font-medium">{verificationData.financialSummary.totalClaims}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Paid Claims</span>
+                        <span className="font-medium">{verificationData.financialSummary.paidClaims}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Pending Claims</span>
+                        <span className="font-medium">{verificationData.financialSummary.pendingClaims}</span>
+                      </div>
+                      <div className="border-t pt-2 mt-2">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Total Billed</span>
+                          <span className="font-medium">{formatCurrency(verificationData.financialSummary.totalBilled)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Total Approved</span>
+                          <span className="font-medium">{formatCurrency(verificationData.financialSummary.totalApproved)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Total Paid</span>
+                          <span className="font-medium">{formatCurrency(verificationData.financialSummary.totalPaid)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Outstanding Balance</span>
+                          <span className="font-medium">{formatCurrency(verificationData.financialSummary.totalOutstanding)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Coverage Limits</CardTitle>
+                    <CardDescription>
+                      SHA coverage limits and utilization
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Annual Limit</span>
+                        <span className="font-medium">{formatCurrency(verificationData.shaVerification.limits.annualLimit)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Outpatient Limit</span>
+                        <span className="font-medium">{formatCurrency(verificationData.shaVerification.limits.outpatientLimit)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Family Limit</span>
+                        <span className="font-medium">{formatCurrency(verificationData.shaVerification.limits.familyLimit)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Lifetime Limit</span>
+                        <span className="font-medium">{formatCurrency(verificationData.shaVerification.limits.lifetimeLimit)}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            {/* Member Details Tab */}
+            <TabsContent value="details">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Member Details</CardTitle>
+                  <CardDescription>
+                    Complete member information
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-sm font-medium text-muted-foreground mb-2">Personal Information</h4>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm">Full Name</span>
+                            <span className="text-sm font-medium">
+                              {verificationData.patient.firstName} {verificationData.patient.lastName}
+                              {verificationData.patient.otherNames && ` ${verificationData.patient.otherNames}`}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Date of Birth</span>
+                            <span className="text-sm font-medium">{formatDate(verificationData.patient.dateOfBirth)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Age</span>
+                            <span className="text-sm font-medium">{verificationData.patient.age} years</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Gender</span>
+                            <span className="text-sm font-medium capitalize">{verificationData.patient.gender}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-medium text-muted-foreground mb-2">Contact Information</h4>
+                        <div className="space-y-2">
+                          {verificationData.patient.phone && (
+                            <div className="flex justify-between">
+                              <span className="text-sm">Phone</span>
+                              <span className="text-sm font-medium">{verificationData.patient.phone}</span>
+                            </div>
+                          )}
+                          {verificationData.patient.alternatePhone && (
+                            <div className="flex justify-between">
+                              <span className="text-sm">Alternate Phone</span>
+                              <span className="text-sm font-medium">{verificationData.patient.alternatePhone}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-sm font-medium text-muted-foreground mb-2">Medical Information</h4>
+                        <div className="space-y-2">
+                          {verificationData.patient.bloodType && (
+                            <div className="flex justify-between">
+                              <span className="text-sm">Blood Type</span>
+                              <span className="text-sm font-medium">{verificationData.patient.bloodType}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="text-sm">Allergies</span>
+                            <span className="text-sm font-medium">
+                              {verificationData.patient.allergies.length > 0 
+                                ? verificationData.patient.allergies.join(', ')
+                                : 'None reported'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Chronic Conditions</span>
+                            <span className="text-sm font-medium">
+                              {verificationData.patient.chronicConditions.length > 0
+                                ? verificationData.patient.chronicConditions.join(', ')
+                                : 'None reported'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-medium text-muted-foreground mb-2">Current Hospital</h4>
+                        <div className="space-y-2">
+                          {verificationData.patient.currentHospital ? (
+                            <>
+                              <div className="flex justify-between">
+                                <span className="text-sm">Hospital</span>
+                                <span className="text-sm font-medium">{verificationData.patient.currentHospital.name}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-sm">SHA Contracted</span>
+                                <span className="text-sm font-medium">
+                                  {verificationData.patient.currentHospital.shaContracted ? 'Yes' : 'No'}
+                                </span>
+                              </div>
+                              {verificationData.patient.currentHospital.shaFacilityCode && (
+                                <div className="flex justify-between">
+                                  <span className="text-sm">SHA Facility Code</span>
+                                  <span className="text-sm font-medium">{verificationData.patient.currentHospital.shaFacilityCode}</span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No current hospital assigned</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
           </Tabs>
         </div>
       )}

@@ -5,23 +5,26 @@ import { createToken } from '@/app/lib/auth'
 import { normalizeRole, getPermissionsForRole, UserRole } from '@/app/lib/auth'
 import bcrypt from 'bcryptjs'
 
+// Import StaffRole from Prisma client
+import { StaffRole } from '@prisma/client'
+
 // Map UserRole to Prisma StaffRole
-function mapUserRoleToStaffRole(userRole: UserRole): any {
-  const roleMap: Record<UserRole, any> = {
+function mapUserRoleToStaffRole(userRole: UserRole): StaffRole {
+  const roleMap: Record<UserRole, StaffRole> = {
     'SUPER_ADMIN': 'ADMINISTRATOR',
     'ADMIN': 'ADMINISTRATOR',
     'COUNTY_ADMIN': 'ADMINISTRATOR', 
-    'COUNTY_HEALTH_OFFICER': 'HEALTH_OFFICER',
+    'COUNTY_HEALTH_OFFICER': 'ADMINISTRATOR',
     'HOSPITAL_ADMIN': 'ADMINISTRATOR',
-    'FACILITY_MANAGER': 'MANAGER',
+    'FACILITY_MANAGER': 'ADMINISTRATOR', // Changed from 'MANAGER' to 'ADMINISTRATOR'
     'DOCTOR': 'MEDICAL_OFFICER',
     'NURSE': 'NURSE',
     'TRIAGE_OFFICER': 'TRIAGE_NURSE',
     'DISPATCHER': 'DISPATCHER',
     'DISPATCH_COORDINATOR': 'DISPATCHER',
     'AMBULANCE_DRIVER': 'AMBULANCE_DRIVER',
-    'AMBULANCE_CREW': 'AMBULANCE_CREW',
-    'EMERGENCY_MANAGER': 'EMERGENCY_MANAGER',
+    'AMBULANCE_CREW': 'AMBULANCE_DRIVER', // Changed from 'AMBULANCE_CREW' to 'AMBULANCE_DRIVER'
+    'EMERGENCY_MANAGER': 'ADMINISTRATOR', // Changed from 'EMERGENCY_MANAGER' to 'ADMINISTRATOR'
     'FINANCE_OFFICER': 'ADMINISTRATOR',
     'LAB_TECHNICIAN': 'LAB_TECHNICIAN',
     'PHARMACIST': 'PHARMACIST',
@@ -93,7 +96,8 @@ export async function POST(request: NextRequest) {
 
     // Get default hospital for assignment
     let defaultHospitalId = hospitalId
-    let defaultCountyId = null
+    // Remove the unused variable
+    // let defaultCountyId = null
 
     if (!defaultHospitalId) {
       // Try to find a default hospital
@@ -104,7 +108,6 @@ export async function POST(request: NextRequest) {
 
       if (defaultHospital) {
         defaultHospitalId = defaultHospital.id
-        defaultCountyId = defaultHospital.countyId
         console.log('🏥 Assigned to default hospital:', defaultHospital.name)
       } else {
         console.log('⚠️ No hospitals found in database')
@@ -328,29 +331,33 @@ export async function POST(request: NextRequest) {
 
     return response
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('💥 Registration error:', error)
-    console.error('💥 Error stack:', error.stack)
     
     // Handle Prisma errors
-    if (error.code === 'P2002') {
-      return NextResponse.json(
-        { error: 'A user with this email or staff number already exists' },
-        { status: 409 }
-      )
-    }
+    if (error && typeof error === 'object' && 'code' in error) {
+      const prismaError = error as { code: string; message?: string; stack?: string }
+      console.error('💥 Error stack:', prismaError.stack)
+      
+      if (prismaError.code === 'P2002') {
+        return NextResponse.json(
+          { error: 'A user with this email or staff number already exists' },
+          { status: 409 }
+        )
+      }
 
-    if (error.code === 'P2003') {
-      return NextResponse.json(
-        { error: 'Invalid facility reference. Please select a valid facility.' },
-        { status: 400 }
-      )
+      if (prismaError.code === 'P2003') {
+        return NextResponse.json(
+          { error: 'Invalid facility reference. Please select a valid facility.' },
+          { status: 400 }
+        )
+      }
     }
 
     return NextResponse.json(
       { 
         error: 'Registration failed. Please try again.',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        details: process.env.NODE_ENV === 'development' ? error instanceof Error ? error.message : undefined : undefined
       },
       { status: 500 }
     )

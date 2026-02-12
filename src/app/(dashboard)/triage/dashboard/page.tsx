@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs'
@@ -19,10 +19,7 @@ import {
   Download,
   AlertTriangle,
   Heart,
-  Stethoscope,
   Building2,
-  PieChart as PieChartIcon,
-  LineChart,
   Bed,
   Thermometer,
   Brain,
@@ -30,10 +27,7 @@ import {
   Syringe,
   Ambulance,
   Target,
-  CheckCircle,
   XCircle,
-  ChevronRight,
-  Eye,
   RefreshCw
 } from 'lucide-react'
 import {
@@ -55,10 +49,10 @@ import {
   ScatterChart,
   Scatter,
   ZAxis,
-  ComposedChart,
-  TooltipProps
+  ComposedChart
 } from 'recharts'
 import { format } from 'date-fns'
+import { LucideIcon } from 'lucide-react'
 
 // Define proper interfaces for nested data structures
 interface PriorityData {
@@ -131,7 +125,7 @@ interface DashboardData {
 }
 
 // Department icons mapping
-const DEPARTMENT_ICONS: Record<string, any> = {
+const DEPARTMENT_ICONS: Record<string, LucideIcon> = {
   'ACCIDENT_EMERGENCY': AlertTriangle,
   'PEDIATRICS': Baby,
   'MATERNITY': Heart,
@@ -163,14 +157,6 @@ interface StatusChartData {
   name: string
   value: number
   color: string
-}
-
-interface DepartmentChartData {
-  name: string
-  total: number
-  occupancy: number
-  availableBeds: number
-  totalBeds: number
 }
 
 interface PeakHourChartData {
@@ -210,28 +196,18 @@ interface QualityMetric {
   unit?: string
   target: number
   status: 'good' | 'poor'
-  icon: any
+  icon: LucideIcon
 }
 
-// Custom tooltip component
-const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
-        <p className="font-semibold text-gray-900">{label}</p>
-        {payload.map((entry, index) => (
-          <p key={index} className="text-sm" style={{ color: entry.color }}>
-            {entry.name}: {entry.value} {entry.name?.includes('Time') ? 'minutes' : 'patients'}
-          </p>
-        ))}
-      </div>
-    )
-  }
-  return null
+interface Filters {
+  period: string
+  hospitalId: string
+  dateFrom: string
+  dateTo: string
 }
 
 // Mock data generator for development
-const generateMockDashboardData = (filters: any): DashboardData => {
+const generateMockDashboardData = (filters: Filters): DashboardData => {
   const now = new Date()
   const startDate = filters.dateFrom ? new Date(filters.dateFrom) : new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const endDate = filters.dateTo ? new Date(filters.dateTo) : now
@@ -446,7 +422,7 @@ export default function TriageDashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<Filters>({
     period: 'today',
     hospitalId: 'all',
     dateFrom: '',
@@ -455,11 +431,7 @@ export default function TriageDashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [usingMockData, setUsingMockData] = useState(false)
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [filters])
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -512,7 +484,11 @@ export default function TriageDashboardPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filters])
+
+  useEffect(() => {
+    fetchDashboardData()
+  }, [fetchDashboardData])
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -575,18 +551,6 @@ export default function TriageDashboardPage() {
     value: count,
     color: getStatusColor(status)
   }))
-
-  const departmentData: DepartmentChartData[] = dashboardData!.departments
-    .filter(dept => dept.total > 0)
-    .map(dept => ({
-      name: dept.departmentName,
-      total: dept.total,
-      occupancy: dept.bedUtilization.occupancyRate,
-      availableBeds: dept.bedUtilization.availableBeds,
-      totalBeds: dept.bedUtilization.totalBeds
-    }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 8)
 
   const peakHourData: PeakHourChartData[] = dashboardData!.trends.peakHours.map(hour => ({
     hour: `${hour.hour}:00`,
@@ -939,7 +903,7 @@ export default function TriageDashboardPage() {
             <span>Departments</span>
           </TabsTrigger>
           <TabsTrigger value="trends" className="flex items-center gap-2 data-[state=active]:bg-background">
-            <LineChart className="w-4 h-4" />
+            <RechartsLineChart className="w-4 h-4" />
             <span>Trends</span>
           </TabsTrigger>
           <TabsTrigger value="performance" className="flex items-center gap-2 data-[state=active]:bg-background">

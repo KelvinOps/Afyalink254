@@ -16,13 +16,84 @@ export type WebSocketMessageType =
   | 'PATIENT_TRANSFER'
   | 'RESOURCE_ALERT'
 
+// Define specific data types for different message types
+export interface TriageUpdateData {
+  patientId: string
+  priority: 'low' | 'medium' | 'high' | 'critical'
+  message: string
+  [key: string]: unknown
+}
+
+export interface DispatchAlertData {
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  message: string
+  actionUrl?: string
+  [key: string]: unknown
+}
+
+export interface AmbulanceStatusData {
+  ambulanceId: string
+  status: 'available' | 'dispatched' | 'emergency' | 'offline'
+  message: string
+  [key: string]: unknown
+}
+
+export interface EmergencyAlertData {
+  title?: string
+  message: string
+  actionUrl?: string
+  [key: string]: unknown
+}
+
+export interface SystemStatusData {
+  status: 'operational' | 'degraded' | 'down'
+  message: string
+  action?: string
+  channel?: string
+  [key: string]: unknown
+}
+
+export interface ResourceAlertData {
+  critical: boolean
+  message: string
+  [key: string]: unknown
+}
+
+// Union type for all possible message data
+export type WebSocketMessageData = 
+  | TriageUpdateData
+  | DispatchAlertData
+  | AmbulanceStatusData
+  | EmergencyAlertData
+  | SystemStatusData
+  | ResourceAlertData
+  | Record<string, unknown>
+
 export interface WebSocketMessage {
   type: WebSocketMessageType
-  data: any
+  data: WebSocketMessageData
   timestamp: string
   facilityId?: string
   countyId?: string
   priority?: 'low' | 'medium' | 'high' | 'critical'
+}
+
+// Notification types
+export type NotificationType = 'success' | 'error' | 'warning' | 'emergency' | 'info'
+
+export interface NotificationAction {
+  label: string
+  onClick: () => void
+}
+
+export interface Notification {
+  type: NotificationType
+  title: string
+  message: string
+  priority: 'low' | 'medium' | 'high' | 'critical'
+  source: 'system' | 'dispatch' | 'triage' | 'resources'
+  duration: number
+  action?: NotificationAction
 }
 
 interface WebSocketState {
@@ -147,7 +218,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const reconnectTimeout = useRef<NodeJS.Timeout | null>(null)
   
   // Safe notification function using custom events
-  const addNotification = useCallback((notification: any) => {
+  const addNotification = useCallback((notification: Notification) => {
     try {
       const event = new CustomEvent('websocket-notification', {
         detail: notification
@@ -181,6 +252,146 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       return `${protocol}//${window.location.host}/api/ws`;
     }
   }, [])
+
+  const handleIncomingMessage = useCallback((message: WebSocketMessage) => {
+    console.log('📨 Handling incoming message:', message.type);
+    
+    try {
+      // Handle different message types and show appropriate notifications
+      switch (message.type) {
+        case 'EMERGENCY_ALERT': {
+          const data = message.data as EmergencyAlertData;
+          addNotification({
+            type: 'emergency',
+            title: data.title || 'Emergency Alert',
+            message: data.message,
+            priority: 'critical',
+            source: 'dispatch',
+            duration: 10000,
+            action: data.actionUrl ? {
+              label: 'View Details',
+              onClick: () => window.open(data.actionUrl, '_blank')
+            } : undefined
+          });
+          break;
+        }
+
+        case 'TRIAGE_UPDATE': {
+          const data = message.data as TriageUpdateData;
+          if (data.priority === 'high' || data.priority === 'critical') {
+            addNotification({
+              type: 'warning',
+              title: 'Triage Update',
+              message: data.message,
+              priority: data.priority,
+              source: 'triage',
+              duration: 6000
+            });
+          }
+          break;
+        }
+
+        case 'DISPATCH_ALERT': {
+          const data = message.data as DispatchAlertData;
+          addNotification({
+            type: data.severity === 'critical' ? 'error' : 'warning',
+            title: 'Dispatch Alert',
+            message: data.message,
+            priority: data.severity === 'critical' ? 'critical' : 'high',
+            source: 'dispatch',
+            duration: 8000
+          });
+          break;
+        }
+
+        case 'AMBULANCE_STATUS': {
+          const data = message.data as AmbulanceStatusData;
+          if (data.status === 'emergency') {
+            addNotification({
+              type: 'emergency',
+              title: 'Ambulance Emergency',
+              message: data.message,
+              priority: 'critical',
+              source: 'dispatch',
+              duration: 10000
+            });
+          }
+          break;
+        }
+
+        case 'RESOURCE_ALERT': {
+          const data = message.data as ResourceAlertData;
+          addNotification({
+            type: 'warning',
+            title: 'Resource Alert',
+            message: data.message,
+            priority: data.critical ? 'high' : 'medium',
+            source: 'resources',
+            duration: 5000
+          });
+          break;
+        }
+
+        case 'SYSTEM_STATUS': {
+          const data = message.data as SystemStatusData;
+          if (data.status === 'degraded' || data.status === 'down') {
+            addNotification({
+              type: 'error',
+              title: 'System Status Update',
+              message: data.message,
+              priority: 'high',
+              source: 'system',
+              duration: 8000
+            });
+          }
+          break;
+        }
+
+        default:
+          console.log('ℹ️ Unhandled WebSocket message type:', message.type);
+      }
+    } catch (error) {
+      console.error('❌ Error handling incoming message:', error);
+    }
+  }, [addNotification]);
+
+  const sendMessage = useCallback((message: WebSocketMessage) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      try {
+        ws.current.send(JSON.stringify(message));
+        console.log('📤 WebSocket message sent:', message);
+      } catch (error) {
+        console.error('❌ Error sending WebSocket message:', error);
+      }
+    } else {
+      console.warn('⚠️ WebSocket not connected, message not sent:', message);
+      addNotification({
+        type: 'warning',
+        title: 'Connection Issue',
+        message: 'Real-time updates temporarily unavailable',
+        priority: 'medium',
+        source: 'system',
+        duration: 5000
+      });
+    }
+  }, [addNotification]);
+
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectTimeout.current) {
+      console.log('⏰ Reconnect already scheduled, skipping...');
+      return;
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, state.reconnectAttempts), 30000); // Exponential backoff, max 30s
+    console.log(`⏰ Scheduling reconnect in ${delay}ms (attempt ${state.reconnectAttempts + 1})`);
+    
+    reconnectTimeout.current = setTimeout(() => {
+      console.log('🔄 Attempting reconnect...');
+      reconnectTimeout.current = null;
+      dispatch({ type: 'INCREMENT_RECONNECT_ATTEMPTS' });
+      // The connect function will be called via useEffect
+    }, delay);
+  }, [state.reconnectAttempts]);
 
   const connect = useCallback(() => {
     // Prevent multiple connection attempts
@@ -275,7 +486,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'CONNECTION_ERROR' });
       scheduleReconnect();
     }
-  }, [state.isConnected, state.isConnecting, state.subscriptions, getWebSocketUrl, addNotification]);
+  }, [state.isConnected, state.isConnecting, state.subscriptions, getWebSocketUrl, addNotification, handleIncomingMessage, sendMessage, scheduleReconnect]);
 
   const disconnect = useCallback(() => {
     console.log('🔌 Disconnecting WebSocket...');
@@ -297,44 +508,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
     dispatch({ type: 'CONNECTION_CLOSED' });
   }, []);
-
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectTimeout.current) {
-      console.log('⏰ Reconnect already scheduled, skipping...');
-      return;
-    }
-
-    const delay = Math.min(1000 * Math.pow(2, state.reconnectAttempts), 30000); // Exponential backoff, max 30s
-    console.log(`⏰ Scheduling reconnect in ${delay}ms (attempt ${state.reconnectAttempts + 1})`);
-    
-    reconnectTimeout.current = setTimeout(() => {
-      console.log('🔄 Attempting reconnect...');
-      reconnectTimeout.current = null;
-      dispatch({ type: 'INCREMENT_RECONNECT_ATTEMPTS' });
-      connect();
-    }, delay);
-  }, [state.reconnectAttempts, connect]);
-
-  const sendMessage = useCallback((message: WebSocketMessage) => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      try {
-        ws.current.send(JSON.stringify(message));
-        console.log('📤 WebSocket message sent:', message);
-      } catch (error) {
-        console.error('❌ Error sending WebSocket message:', error);
-      }
-    } else {
-      console.warn('⚠️ WebSocket not connected, message not sent:', message);
-      addNotification({
-        type: 'warning',
-        title: 'Connection Issue',
-        message: 'Real-time updates temporarily unavailable',
-        priority: 'medium',
-        source: 'system',
-        duration: 5000
-      });
-    }
-  }, [addNotification]);
 
   const subscribe = useCallback((channel: string) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -365,96 +538,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     setTimeout(connect, 500);
   }, [disconnect, connect]);
 
-  const handleIncomingMessage = useCallback((message: WebSocketMessage) => {
-    console.log('📨 Handling incoming message:', message.type);
-    
-    try {
-      // Handle different message types and show appropriate notifications
-      switch (message.type) {
-        case 'EMERGENCY_ALERT':
-          addNotification({
-            type: 'emergency',
-            title: message.data.title || 'Emergency Alert',
-            message: message.data.message,
-            priority: 'critical',
-            source: 'dispatch',
-            duration: 10000,
-            action: message.data.actionUrl ? {
-              label: 'View Details',
-              onClick: () => window.open(message.data.actionUrl, '_blank')
-            } : undefined
-          });
-          break;
-
-        case 'TRIAGE_UPDATE':
-          if (message.data.priority === 'high' || message.data.priority === 'critical') {
-            addNotification({
-              type: 'warning',
-              title: 'Triage Update',
-              message: message.data.message,
-              priority: message.data.priority,
-              source: 'triage',
-              duration: 6000
-            });
-          }
-          break;
-
-        case 'DISPATCH_ALERT':
-          addNotification({
-            type: message.data.severity === 'critical' ? 'error' : 'warning',
-            title: 'Dispatch Alert',
-            message: message.data.message,
-            priority: message.data.severity === 'critical' ? 'critical' : 'high',
-            source: 'dispatch',
-            duration: 8000
-          });
-          break;
-
-        case 'AMBULANCE_STATUS':
-          if (message.data.status === 'emergency') {
-            addNotification({
-              type: 'emergency',
-              title: 'Ambulance Emergency',
-              message: message.data.message,
-              priority: 'critical',
-              source: 'dispatch',
-              duration: 10000
-            });
-          }
-          break;
-
-        case 'RESOURCE_ALERT':
-          addNotification({
-            type: 'warning',
-            title: 'Resource Alert',
-            message: message.data.message,
-            priority: message.data.critical ? 'high' : 'medium',
-            source: 'resources',
-            duration: 5000
-          });
-          break;
-
-        case 'SYSTEM_STATUS':
-          if (message.data.status === 'degraded' || message.data.status === 'down') {
-            addNotification({
-              type: 'error',
-              title: 'System Status Update',
-              message: message.data.message,
-              priority: 'high',
-              source: 'system',
-              duration: 8000
-            });
-          }
-          break;
-
-        default:
-          console.log('ℹ️ Unhandled WebSocket message type:', message.type);
-      }
-    } catch (error) {
-      console.error('❌ Error handling incoming message:', error);
-    }
-  }, [addNotification]);
-
   // Auto-connect on component mount
   useEffect(() => {
     console.log('🚀 WebSocketProvider mounted, attempting connection...');
@@ -468,7 +551,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       console.log('🧹 WebSocketProvider unmounting, cleaning up...');
       disconnect();
     };
-  }, [connect, disconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency - only run on mount/unmount
 
   // Auto-reconnect when connection is lost
   useEffect(() => {
@@ -556,7 +640,10 @@ export function useWebSocket() {
 }
 
 // Helper hook for specific message types
-export function useWebSocketMessage<T>(type: WebSocketMessageType, callback: (data: T) => void) {
+export function useWebSocketMessage<T extends WebSocketMessageData>(
+  type: WebSocketMessageType, 
+  callback: (data: T) => void
+) {
   const { state } = useWebSocket();
 
   useEffect(() => {

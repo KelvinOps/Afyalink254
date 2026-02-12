@@ -21,10 +21,57 @@ interface Medication {
   category: string
 }
 
+interface Patient {
+  firstName: string
+  lastName: string
+  allergies: string[]
+}
+
+interface Session {
+  patient: Patient
+}
+
+interface CurrentUser {
+  id: string
+  name: string
+  role: string
+}
+
+interface Prescription {
+  id: string
+  prescriptionNumber: string
+  medication: Medication
+  dosage: string
+  frequency: string
+  route: string
+  duration: string
+  quantity?: number
+  unit: string
+  instructions: string
+  specialInstructions: string
+  asNeeded: boolean
+  prnIndication: string
+  startDate: string
+  refillsAllowed: number
+  requiresReview: boolean
+  reviewDate: string
+  shaCovered: boolean
+  status: string
+  isDispensed: boolean
+  refillsUsed: number
+  prescribedBy: {
+    id: string
+    firstName: string
+    lastName: string
+    role: string
+  }
+  createdAt: Date
+}
+
 interface NewPrescriptionFormProps {
-  session: any
-  currentUser: any
-  onSave: (prescription: any) => void
+  session: Session
+  currentUser: CurrentUser
+  onSave: (prescription: Prescription) => void
   onCancel: () => void
 }
 
@@ -126,7 +173,7 @@ export function NewPrescriptionForm({ session, currentUser, onSave, onCancel }: 
     med.genericName?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const handleInputChange = (field: string, value: any) => {
+  const handleInputChange = (field: string, value: string | number | boolean) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -139,7 +186,7 @@ export function NewPrescriptionForm({ session, currentUser, onSave, onCancel }: 
       return
     }
 
-    const prescription = {
+    const prescription: Prescription = {
       id: `prescription-${Date.now()}`,
       prescriptionNumber: `RX${String(Math.floor(Math.random() * 1000000)).padStart(6, '0')}`,
       medication: selectedMedication,

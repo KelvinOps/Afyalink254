@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/app/lib/auth'
 import { prisma } from '@/app/lib/prisma'
-import { AuditAction, AlertType, AlertSeverity, AudienceType, AlertStatus } from '@prisma/client' 
+import { AuditAction, AlertType, AlertSeverity, AudienceType, AlertStatus, Prisma } from '@prisma/client' 
 
 
 // Define types for bed resources
@@ -22,12 +22,12 @@ interface BedResource {
     id: string
     name: string
     type: string
-  }
+  } | null
   hospital?: {
     id: string
     name: string
     code: string
-  }
+  } | null
 }
 
 interface HospitalDepartment {
@@ -40,6 +40,32 @@ interface HospitalDepartment {
   reservedBeds: number
   utilization: number
   resources: BedResource[]
+}
+
+// Define the resource type with included relations
+interface ResourceWithRelations {
+  id: string
+  name: string
+  type: string
+  totalCapacity: number
+  availableCapacity: number
+  inUseCapacity: number
+  reservedCapacity: number
+  status: string
+  isCritical: boolean
+  hospitalId: string | null
+  departmentId: string | null
+  criticalLevel: number | null
+  department: {
+    id: string
+    name: string
+    type: string
+  } | null
+  hospital: {
+    id: string
+    name: string
+    code: string
+  } | null
 }
 
 // GET /api/resources/beds/availability - Get bed availability across departments
@@ -78,7 +104,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Build where clause based on user role
-    const where: any = {
+    const where: Prisma.ResourceWhereInput = {
       type: { in: bedTypes }
     }
 
@@ -137,7 +163,7 @@ export async function GET(request: NextRequest) {
     // Aggregate data by department and hospital
     const statsByHospitalDept: Record<string, HospitalDepartment> = {}
 
-    bedResources.forEach((resource: any) => {
+    bedResources.forEach((resource: ResourceWithRelations) => {
       const hospitalName = resource.hospital?.name || 'Unknown Hospital'
       const deptName = resource.department?.name || 'Unknown Department'
       const key = `${hospitalName}|${deptName}`
@@ -252,7 +278,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build where clause for resource verification
-    const where: any = {
+    const where: Prisma.ResourceWhereInput = {
       id: resourceId,
       type: { in: ['BED', 'ICU_BED'] as BedType[] }
     }
@@ -292,7 +318,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare update data
-    const updateData: any = {
+    const updateData: Prisma.ResourceUpdateInput = {
       updatedAt: new Date()
     }
 
@@ -338,10 +364,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate capacity constraints
-    const totalUsed = (updateData.inUseCapacity || existingResource.inUseCapacity) + 
-                     (updateData.reservedCapacity || existingResource.reservedCapacity)
+    const totalUsed = (updateData.inUseCapacity as number || existingResource.inUseCapacity) + 
+                     (updateData.reservedCapacity as number || existingResource.reservedCapacity)
     const totalAvailable = updateData.availableCapacity !== undefined ? 
-                          updateData.availableCapacity : existingResource.availableCapacity
+                          updateData.availableCapacity as number : existingResource.availableCapacity
 
     if (totalUsed + totalAvailable > existingResource.totalCapacity) {
       return NextResponse.json(
@@ -372,7 +398,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Log the bed availability update
-    const auditData = {
+    const auditData: Prisma.AuditLogCreateInput = {
       userId: user.id,
       userRole: user.role,
       userName: user.name || 'Unknown',
@@ -410,13 +436,14 @@ export async function POST(request: NextRequest) {
         // Create a SystemAlert with proper enum values
         await prisma.systemAlert.create({
           data: {
+            alertNumber: `ALERT-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
             alertType: 'RESOURCE_SHORTAGE' as AlertType,
             severity: 'CRITICAL' as AlertSeverity,
             title: 'Critical Bed Alert',
             message: `${resource.name} in ${resource.department?.name || 'Unknown'} has reached critical level. Available: ${resource.availableCapacity}`,
             sourceType: 'RESOURCE',
             sourceId: resource.id,
-            hospitalId: existingResource.hospitalId,
+            ...(existingResource.hospitalId && { hospitalId: existingResource.hospitalId }),
             audienceType: 'SPECIFIC_HOSPITAL' as AudienceType,
             targetRoles: ['HOSPITAL_ADMIN', 'DOCTOR'],
             priority: 1, // Highest priority

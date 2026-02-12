@@ -40,17 +40,11 @@ import {
   ArrowLeft,
   Ambulance, 
   MapPin, 
-  Phone,
   User,
   Wrench,
-  Fuel,
-  Calendar,
   AlertTriangle,
   Edit,
-  Upload,
-  Download,
   History,
-  Bell,
   Map,
   Plus
 } from 'lucide-react'

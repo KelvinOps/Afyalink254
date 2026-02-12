@@ -3,6 +3,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { verifyToken } from '@/app/lib/auth'
+import { Prisma, AmbulanceStatus, AmbulanceType, EquipmentLevel } from '@prisma/client'
+
+interface WhereClause {
+  status?: AmbulanceStatus
+  type?: AmbulanceType
+  hospitalId?: string | { in: string[] }
+  countyId?: string
+}
+
+interface CreateAmbulanceBody {
+  ambulanceType?: 'HOSPITAL' | 'COUNTY'
+  registrationNumber: string
+  type: AmbulanceType
+  equipmentLevel: EquipmentLevel
+  status?: AmbulanceStatus
+  hospitalId?: string
+  countyId?: string
+  hasGPS?: boolean
+  hasRadio?: boolean
+  hasOxygen?: boolean
+  hasDefibrillator?: boolean
+  hasVentilator?: boolean
+  hasMonitor?: boolean
+  driverName?: string
+  driverPhone?: string
+  driverLicense?: string
+  paramedicName?: string
+  paramedicLicense?: string
+  crewSize?: number
+  lastServiceDate?: string
+  nextServiceDate?: string
+  mileage?: number
+  fuelLevel?: number
+  odometerReading?: number
+  isOperational?: boolean
+  currentLocation?: Prisma.JsonValue
+  lastKnownLocation?: Prisma.JsonValue
+  baseStation?: string
+  baseCoordinates?: Prisma.JsonValue
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,15 +59,27 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const status = searchParams.get('status') as any
-    const type = searchParams.get('type') as any
+    const statusParam = searchParams.get('status')
+    const typeParam = searchParams.get('type')
     const includeCounty = searchParams.get('includeCounty') === 'true'
     const hospitalId = searchParams.get('hospitalId')
     const countyId = searchParams.get('countyId')
 
+    // Validate and convert status
+    const validStatuses = Object.values(AmbulanceStatus)
+    const status = statusParam && validStatuses.includes(statusParam as AmbulanceStatus) 
+      ? (statusParam as AmbulanceStatus) 
+      : null
+
+    // Validate and convert type
+    const validTypes = Object.values(AmbulanceType)
+    const type = typeParam && validTypes.includes(typeParam as AmbulanceType) 
+      ? (typeParam as AmbulanceType) 
+      : null
+
     // Build query filters
-    const whereHospitalAmbulance: any = {}
-    const whereCountyAmbulance: any = {}
+    const whereHospitalAmbulance: WhereClause = {}
+    const whereCountyAmbulance: WhereClause = {}
     
     // Apply filters if provided
     if (status) {
@@ -104,38 +156,37 @@ export async function GET(request: NextRequest) {
     })
 
     // Fetch county ambulances if requested and user has permission
-    let countyAmbulances: any[] = []
-    if (includeCounty && (user.countyId || user.role === 'ADMIN' || user.role === 'COUNTY_HEALTH_OFFICER')) {
-      countyAmbulances = await prisma.countyAmbulance.findMany({
-        where: whereCountyAmbulance,
-        select: {
-          id: true,
-          registrationNumber: true,
-          type: true,
-          equipmentLevel: true,
-          status: true,
-          currentLocation: true,
-          lastKnownLocation: true,
-          driverName: true,
-          driverPhone: true,
-          hasGPS: true,
-          hasRadio: true,
-          hasOxygen: true,
-          hasDefibrillator: true,
-          lastServiceDate: true,
-          nextServiceDate: true,
-          mileage: true,
-          fuelLevel: true,
-          isOperational: true,
-          county: {
-            select: {
-              name: true
+    const countyAmbulances = includeCounty && (user.countyId || user.role === 'ADMIN' || user.role === 'COUNTY_HEALTH_OFFICER')
+      ? await prisma.countyAmbulance.findMany({
+          where: whereCountyAmbulance,
+          select: {
+            id: true,
+            registrationNumber: true,
+            type: true,
+            equipmentLevel: true,
+            status: true,
+            currentLocation: true,
+            lastKnownLocation: true,
+            driverName: true,
+            driverPhone: true,
+            hasGPS: true,
+            hasRadio: true,
+            hasOxygen: true,
+            hasDefibrillator: true,
+            lastServiceDate: true,
+            nextServiceDate: true,
+            mileage: true,
+            fuelLevel: true,
+            isOperational: true,
+            county: {
+              select: {
+                name: true
+              }
             }
-          }
-        },
-        orderBy: { registrationNumber: 'asc' }
-      })
-    }
+          },
+          orderBy: { registrationNumber: 'asc' }
+        })
+      : []
 
     // Combine and format the results
     const formattedHospitalAmbulances = hospitalAmbulances.map(ambulance => ({
@@ -225,7 +276,7 @@ export async function POST(request: NextRequest) {
       }, { status: 403 })
     }
 
-    const body = await request.json()
+    const body = await request.json() as CreateAmbulanceBody
     const { ambulanceType = 'HOSPITAL' } = body
     
     console.log('Creating ambulance with type:', ambulanceType, 'Data:', {
@@ -236,7 +287,7 @@ export async function POST(request: NextRequest) {
     
     // Validate required fields based on ambulance type
     const requiredFields = ['registrationNumber', 'type', 'equipmentLevel']
-    const missingFields = requiredFields.filter(field => !body[field])
+    const missingFields = requiredFields.filter(field => !body[field as keyof CreateAmbulanceBody])
     
     if (missingFields.length > 0) {
       return NextResponse.json(
@@ -249,7 +300,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate ambulance type values
-    const validTypes = ['BLS', 'ALS', 'CRITICAL_CARE', 'AIR_AMBULANCE', 'PATIENT_TRANSPORT', 'MOBILE_CLINIC']
+    const validTypes = Object.values(AmbulanceType)
     if (!validTypes.includes(body.type)) {
       return NextResponse.json(
         { 
@@ -262,7 +313,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate equipment level
-    const validEquipmentLevels = ['BASIC', 'INTERMEDIATE', 'ADVANCED', 'CRITICAL_CARE']
+    const validEquipmentLevels = Object.values(EquipmentLevel)
     if (!validEquipmentLevels.includes(body.equipmentLevel)) {
       return NextResponse.json(
         { 
@@ -340,11 +391,17 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const ambulanceData: any = {
+      // Validate and convert status
+      const validStatuses = Object.values(AmbulanceStatus)
+      const status = body.status && validStatuses.includes(body.status) 
+        ? body.status 
+        : AmbulanceStatus.AVAILABLE
+
+      const ambulanceData: Prisma.AmbulanceUncheckedCreateInput = {
         registrationNumber: body.registrationNumber,
         type: body.type,
         equipmentLevel: body.equipmentLevel,
-        status: body.status || 'AVAILABLE',
+        status: status,
         hospitalId: hospitalId,
         hasGPS: body.hasGPS ?? false,
         hasRadio: body.hasRadio ?? true,
@@ -364,8 +421,8 @@ export async function POST(request: NextRequest) {
         fuelLevel: body.fuelLevel ?? 100,
         odometerReading: body.odometerReading || 0,
         isOperational: body.isOperational ?? true,
-        currentLocation: body.currentLocation || null,
-        lastKnownLocation: body.lastKnownLocation || null
+        currentLocation: body.currentLocation ?? undefined,
+        lastKnownLocation: body.lastKnownLocation ?? undefined
       }
 
       console.log('Creating hospital ambulance with data:', {
@@ -467,14 +524,20 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const countyAmbulanceData: any = {
+      // Validate and convert status
+      const validStatuses = Object.values(AmbulanceStatus)
+      const status = body.status && validStatuses.includes(body.status) 
+        ? body.status 
+        : AmbulanceStatus.AVAILABLE
+
+      const countyAmbulanceData: Prisma.CountyAmbulanceUncheckedCreateInput = {
         registrationNumber: body.registrationNumber,
         type: body.type,
         equipmentLevel: body.equipmentLevel,
-        status: body.status || 'AVAILABLE',
+        status: status,
         countyId: countyId,
         baseStation: body.baseStation || 'Main Station',
-        baseCoordinates: body.baseCoordinates || null,
+        baseCoordinates: body.baseCoordinates ?? undefined,
         hasGPS: body.hasGPS ?? false,
         hasRadio: body.hasRadio ?? true,
         hasOxygen: body.hasOxygen ?? true,
@@ -487,8 +550,8 @@ export async function POST(request: NextRequest) {
         mileage: body.mileage || 0,
         fuelLevel: body.fuelLevel ?? 100,
         isOperational: body.isOperational ?? true,
-        currentLocation: body.currentLocation || null,
-        lastKnownLocation: body.lastKnownLocation || null
+        currentLocation: body.currentLocation ?? undefined,
+        lastKnownLocation: body.lastKnownLocation ?? undefined
       }
 
       console.log('Creating county ambulance with data:', {
@@ -530,37 +593,43 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating ambulance:', error)
     
     // Handle Prisma errors specifically
-    if (error.code === 'P2002') {
-      return NextResponse.json(
-        { 
-          error: 'Duplicate registration number',
-          details: error.meta
-        },
-        { status: 409 }
-      )
+    if (error && typeof error === 'object' && 'code' in error) {
+      const prismaError = error as Prisma.PrismaClientKnownRequestError
+      
+      if (prismaError.code === 'P2002') {
+        return NextResponse.json(
+          { 
+            error: 'Duplicate registration number',
+            details: prismaError.meta
+          },
+          { status: 409 }
+        )
+      }
+      
+      if (prismaError.code === 'P2003') {
+        return NextResponse.json(
+          { 
+            error: 'Foreign key constraint failed',
+            details: prismaError.meta
+          },
+          { status: 400 }
+        )
+      }
     }
-    
-    if (error.code === 'P2003') {
-      return NextResponse.json(
-        { 
-          error: 'Foreign key constraint failed',
-          details: error.meta
-        },
-        { status: 400 }
-      )
-    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+    const errorStack = error instanceof Error ? error.stack : undefined
 
     return NextResponse.json(
       { 
         error: 'Internal server error',
-        message: error.message,
+        message: errorMessage,
         ...(process.env.NODE_ENV === 'development' && {
-          stack: error.stack,
-          code: error.code
+          stack: errorStack
         })
       },
       { status: 500 }

@@ -1,9 +1,8 @@
-
 //(dashboard)/triage/[id]/edit/page.tsx
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
@@ -75,11 +74,9 @@ export default function EditTriagePage() {
 
   const triageId = params.id as string
 
-  useEffect(() => {
-    fetchTriageEntry()
-  }, [triageId])
-
-  const fetchTriageEntry = async () => {
+  // Wrapped in useCallback so the function reference is stable across renders.
+  // triageId is the only external value it closes over, so it is the only dep.
+  const fetchTriageEntry = useCallback(async () => {
     try {
       setLoading(true)
       const response = await fetch(`/api/triage/${triageId}`)
@@ -114,7 +111,14 @@ export default function EditTriagePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [triageId])
+
+  // fetchTriageEntry is now stable (only changes if triageId changes),
+  // so including it here satisfies the exhaustive-deps rule without
+  // causing infinite re-fetch loops.
+  useEffect(() => {
+    fetchTriageEntry()
+  }, [fetchTriageEntry])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

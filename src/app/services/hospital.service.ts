@@ -1,8 +1,7 @@
-
-
 import { prisma } from '@/app/lib/prisma'
 import { auditLog, AuditAction } from '@/app/lib/audit'
 import { User } from '@/app/lib/auth'
+import { Prisma } from '@prisma/client'
 
 // Define Prisma Json type properly
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
@@ -42,6 +41,62 @@ export interface HospitalCreateData {
   isolationBeds: number
 }
 
+export interface HospitalUpdateData {
+  name?: string
+  code?: string
+  mflCode?: string | null
+  type?: 'PUBLIC' | 'PRIVATE' | 'FAITH_BASED' | 'MISSION' | 'MILITARY' | 'SPECIALIZED' | 'NGO'
+  level?: 'LEVEL_4' | 'LEVEL_5' | 'LEVEL_6'
+  ownership?: 'COUNTY_GOVERNMENT' | 'NATIONAL_GOVERNMENT' | 'PRIVATE' | 'FAITH_BASED' | 'NGO' | 'COMMUNITY'
+  countyId?: string
+  subCounty?: string | null
+  ward?: string | null
+  address?: string
+  coordinates?: JsonValue
+  phone?: string
+  emergencyPhone?: string | null
+  email?: string | null
+  totalBeds?: number
+  functionalBeds?: number
+  icuBeds?: number
+  hdUnitBeds?: number
+  maternityBeds?: number
+  pediatricBeds?: number
+  emergencyBeds?: number
+  isolationBeds?: number
+  operationalStatus?: 'OPERATIONAL' | 'MAINTENANCE' | 'EMERGENCY_ONLY' | 'CLOSED'
+  acceptingPatients?: boolean
+  emergencyOnlyMode?: boolean
+  isActive?: boolean
+}
+
+export interface HospitalStatusUpdateData {
+  operationalStatus?: 'OPERATIONAL' | 'MAINTENANCE' | 'EMERGENCY_ONLY' | 'CLOSED'
+  acceptingPatients?: boolean
+  emergencyOnlyMode?: boolean
+  availableBeds?: number
+  availableIcuBeds?: number
+  availableEmergencyBeds?: number
+  powerStatus?: 'GRID' | 'GENERATOR' | 'SOLAR' | 'NONE'
+  waterStatus?: 'AVAILABLE' | 'LIMITED' | 'NONE'
+  oxygenStatus?: 'AVAILABLE' | 'LIMITED' | 'NONE'
+  internetStatus?: 'AVAILABLE' | 'LIMITED' | 'NONE'
+}
+
+export interface HospitalCapacityUpdateData {
+  totalBeds?: number
+  functionalBeds?: number
+  availableBeds?: number
+  icuBeds?: number
+  availableIcuBeds?: number
+  emergencyBeds?: number
+  availableEmergencyBeds?: number
+  maternityBeds?: number
+  pediatricBeds?: number
+  hdUnitBeds?: number
+  isolationBeds?: number
+}
+
 export async function getHospitals(filters: HospitalFilters = {}) {
   const {
     county,
@@ -55,7 +110,7 @@ export async function getHospitals(filters: HospitalFilters = {}) {
 
   const skip = (page - 1) * limit
 
-  const where: any = {
+  const where: Prisma.HospitalWhereInput = {
     isActive: status !== 'INACTIVE',
   }
 
@@ -169,14 +224,16 @@ export async function getHospitalById(id: string) {
 
 export async function createHospital(data: HospitalCreateData, user: User) {
   // Prepare the data with proper type handling
-  const hospitalData: any = {
+  const hospitalData: Prisma.HospitalCreateInput = {
     // Required fields
     name: data.name,
     code: data.code,
     type: data.type,
     level: data.level,
     ownership: data.ownership,
-    countyId: data.countyId,
+    county: {
+      connect: { id: data.countyId }
+    },
     address: data.address,
     phone: data.phone,
     totalBeds: data.totalBeds,
@@ -192,12 +249,17 @@ export async function createHospital(data: HospitalCreateData, user: User) {
     mflCode: data.mflCode ?? null,
     subCounty: data.subCounty ?? null,
     ward: data.ward ?? null,
+    emergencyPhone: data.emergencyPhone ?? null,
+    email: data.email ?? null,
     
     // Set default values for available beds
     availableBeds: data.functionalBeds,
     availableIcuBeds: data.icuBeds,
     availableEmergencyBeds: data.emergencyBeds,
     lastBedUpdate: new Date(),
+    
+    // Handle coordinates (JSON field)
+    coordinates: data.coordinates as Prisma.InputJsonValue,
     
     // Set default values for other required fields
     accessibilityScore: 50,
@@ -230,24 +292,6 @@ export async function createHospital(data: HospitalCreateData, user: User) {
     internetStatus: 'AVAILABLE',
   }
 
-  // Handle JSON fields properly - coordinates
-  if (data.coordinates) {
-    hospitalData.coordinates = data.coordinates
-  }
-
-  // Handle optional string fields that might be causing type issues
-  if (data.emergencyPhone !== undefined && data.emergencyPhone !== null) {
-    hospitalData.emergencyPhone = data.emergencyPhone
-  } else {
-    hospitalData.emergencyPhone = null
-  }
-
-  if (data.email !== undefined && data.email !== null) {
-    hospitalData.email = data.email
-  } else {
-    hospitalData.email = null
-  }
-
   const hospital = await prisma.hospital.create({
     data: hospitalData,
     include: {
@@ -270,7 +314,7 @@ export async function createHospital(data: HospitalCreateData, user: User) {
   return hospital
 }
 
-export async function updateHospital(id: string, data: any, user: User) {
+export async function updateHospital(id: string, data: HospitalUpdateData, user: User) {
   const hospital = await prisma.hospital.update({
     where: { id },
     data,
@@ -314,7 +358,7 @@ export async function deleteHospital(id: string, user: User) {
   return hospital
 }
 
-export async function updateHospitalStatus(id: string, data: any, user: User) {
+export async function updateHospitalStatus(id: string, data: HospitalStatusUpdateData, user: User) {
   const hospital = await prisma.hospital.update({
     where: { id },
     data: {
@@ -359,7 +403,7 @@ export async function getHospitalStatus(id: string) {
   })
 }
 
-export async function updateHospitalCapacity(id: string, data: any, user: User) {
+export async function updateHospitalCapacity(id: string, data: HospitalCapacityUpdateData, user: User) {
   const hospital = await prisma.hospital.update({
     where: { id },
     data: {

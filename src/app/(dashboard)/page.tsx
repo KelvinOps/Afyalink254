@@ -4,15 +4,22 @@
 import { useAuth } from '@/app/contexts/AuthContext'
 import { 
   Users, 
-  Ambulance, 
   AlertTriangle, 
   Clock, 
   Activity,
-  TrendingUp,
-  Heart
+  LucideIcon
 } from 'lucide-react'
 
-function StatsCard({ title, value, icon: Icon, color, trend, description }: any) {
+interface StatsCardProps {
+  title: string
+  value: string
+  icon: LucideIcon
+  color: string
+  trend?: string
+  description?: string
+}
+
+function StatsCard({ title, value, icon: Icon, color, trend, description }: StatsCardProps) {
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow border border-slate-100">
       <div className="flex items-center justify-between mb-4">

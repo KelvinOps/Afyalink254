@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Staff, StaffSchedule as StaffScheduleType } from '@/app/types/staff.types'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Button } from '@/app/components/ui/button'
 import { Badge } from '@/app/components/ui/badge'
 import { Calendar } from '@/app/components/ui/calendar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select'
-import { Plus, Calendar as CalendarIcon, Clock } from 'lucide-react'
+import { Plus, Clock } from 'lucide-react'
 import { format, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns'
 import { useRouter } from 'next/navigation'
 
@@ -29,11 +29,7 @@ export function StaffSchedule({ hospitalId }: StaffScheduleProps) {
   const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 })
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd })
 
-  useEffect(() => {
-    fetchStaffAndSchedules()
-  }, [selectedDate, hospitalId])
-
-  const fetchStaffAndSchedules = async () => {
+  const fetchStaffAndSchedules = useCallback(async () => {
     setLoading(true)
     try {
       // Fetch active staff
@@ -60,7 +56,11 @@ export function StaffSchedule({ hospitalId }: StaffScheduleProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [hospitalId, weekStart, weekEnd])
+
+  useEffect(() => {
+    fetchStaffAndSchedules()
+  }, [fetchStaffAndSchedules])
 
   const getStaffSchedulesForDay = (staffId: string, date: Date) => {
     return schedules.filter(schedule => 

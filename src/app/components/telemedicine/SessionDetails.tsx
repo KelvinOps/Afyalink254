@@ -8,7 +8,7 @@ import { Textarea } from '@/app/components/ui/textarea'
 import { Label } from '@/app/components/ui/label'
 import { Switch } from '@/app/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select'
-import { User, Calendar, MapPin, Stethoscope, AlertTriangle } from 'lucide-react'
+import { User, Stethoscope, AlertTriangle } from 'lucide-react'
 import { updateTelemedicineSession, type UpdateTelemedicineSessionData } from '@/app/services/telemedicine.service'
 import { useToast } from '@/app/hooks/use-toast'
 
@@ -90,9 +90,14 @@ interface TelemedicineSession {
   updatedAt: Date
 }
 
+interface CurrentUser {
+  id: string
+  role: string
+}
+
 interface SessionDetailsProps {
   session: TelemedicineSession
-  currentUser: any
+  currentUser: CurrentUser
 }
 
 // Use the exact same type as the service expects
@@ -116,7 +121,10 @@ export function SessionDetails({ session, currentUser }: SessionDetailsProps) {
                  currentUser.role === 'SUPER_ADMIN' ||
                  currentUser.role === 'HOSPITAL_ADMIN'
 
-  const handleInputChange = (field: keyof SessionFormData, value: any) => {
+  const handleInputChange = <K extends keyof SessionFormData>(
+    field: K, 
+    value: SessionFormData[K]
+  ) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -295,7 +303,7 @@ export function SessionDetails({ session, currentUser }: SessionDetailsProps) {
                 {isEditing ? (
                   <Select 
                     value={formData.status} 
-                    onValueChange={(value: TelemedicineStatus) => handleInputChange('status', value)}
+                    onValueChange={(value) => handleInputChange('status', value as TelemedicineStatus)}
                   >
                     <SelectTrigger className="mt-1">
                       <SelectValue />

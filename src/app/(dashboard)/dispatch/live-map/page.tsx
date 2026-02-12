@@ -1,11 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import dynamic from 'next/dynamic'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Button } from '@/app/components/ui/button'
 import { Badge } from '@/app/components/ui/badge'
-import { Input } from '@/app/components/ui/input'
 import { Label } from '@/app/components/ui/label'
 import {
   Select,
@@ -17,35 +15,15 @@ import {
 import {
   MapPin,
   Ambulance,
-  Hospital,
+  AlertTriangle,
   Navigation,
-  Filter,
   RefreshCw,
   ZoomIn,
   ZoomOut,
   Layers,
   Eye,
-  AlertTriangle,
-  Clock,
-  Users
+  Clock
 } from 'lucide-react'
-
-// Dynamically import Leaflet to avoid SSR issues
-const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), {
-  ssr: false
-})
-const TileLayer = dynamic(() => import('react-leaflet').then(mod => mod.TileLayer), {
-  ssr: false
-})
-const Marker = dynamic(() => import('react-leaflet').then(mod => mod.Marker), {
-  ssr: false
-})
-const Popup = dynamic(() => import('react-leaflet').then(mod => mod.Popup), {
-  ssr: false
-})
-const Circle = dynamic(() => import('react-leaflet').then(mod => mod.Circle), {
-  ssr: false
-})
 
 interface AmbulanceMarker {
   id: string
@@ -88,18 +66,10 @@ export default function LiveMapPage() {
   const [mapView, setMapView] = useState<'ambulances' | 'hospitals' | 'all'>('all')
   const [center, setCenter] = useState<[number, number]>([-1.2921, 36.8219]) // Nairobi center
   const [zoom, setZoom] = useState(12)
-  const mapRef = useRef(null)
 
-  useEffect(() => {
-    fetchMapData()
-    const interval = setInterval(fetchMapData, 30000) // Update every 30 seconds
-    return () => clearInterval(interval)
-  }, [])
-
-  const fetchMapData = async () => {
+  const fetchMapData = useCallback(async () => {
     try {
       setIsLoading(true)
-      const token = localStorage.getItem('token')
       
       // In a real app, you would fetch this from your API
       // For now, using mock data
@@ -206,36 +176,13 @@ export default function LiveMapPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
-  const getAmbulanceIconColor = (status: string) => {
-    switch (status) {
-      case 'AVAILABLE': return '#22c55e' // green
-      case 'DISPATCHED': return '#3b82f6' // blue
-      case 'TRANSPORTING': return '#8b5cf6' // purple
-      case 'UNAVAILABLE': return '#94a3b8' // gray
-      case 'MAINTENANCE': return '#f59e0b' // orange
-      default: return '#94a3b8'
-    }
-  }
-
-  const getEmergencyIconColor = (severity: string) => {
-    switch (severity) {
-      case 'CRITICAL': return '#ef4444' // red
-      case 'URGENT': return '#f97316' // orange
-      case 'NON_URGENT': return '#eab308' // yellow
-      default: return '#94a3b8'
-    }
-  }
-
-  const getHospitalIconColor = (status: string) => {
-    switch (status) {
-      case 'OPERATIONAL': return '#10b981' // green
-      case 'LIMITED_CAPACITY': return '#f59e0b' // yellow
-      case 'OVERWHELMED': return '#ef4444' // red
-      default: return '#94a3b8'
-    }
-  }
+  useEffect(() => {
+    fetchMapData()
+    const interval = setInterval(fetchMapData, 30000) // Update every 30 seconds
+    return () => clearInterval(interval)
+  }, [fetchMapData])
 
   const centerOnLocation = (lat: number, lng: number) => {
     setCenter([lat, lng])
@@ -251,6 +198,10 @@ export default function LiveMapPage() {
     if (diffMins < 1) return 'Just now'
     if (diffMins < 60) return `${diffMins}m ago`
     return `${Math.floor(diffMins / 60)}h ago`
+  }
+
+  const handleViewModeChange = (value: string) => {
+    setMapView(value as 'ambulances' | 'hospitals' | 'all')
   }
 
   return (
@@ -292,7 +243,7 @@ export default function LiveMapPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>View Mode</Label>
-                <Select value={mapView} onValueChange={(value: any) => setMapView(value)}>
+                <Select value={mapView} onValueChange={handleViewModeChange}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -409,82 +360,7 @@ export default function LiveMapPage() {
                   </div>
                   
                   {/* In a real implementation, you would render the Leaflet map here */}
-                  {/* <MapContainer center={center} zoom={zoom} ref={mapRef} className="h-full w-full">
-                    <TileLayer
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    />
-                    
-                    {ambulances.map((ambulance) => (
-                      <Marker 
-                        key={ambulance.id} 
-                        position={[ambulance.lat, ambulance.lng]}
-                        icon={L.icon({
-                          iconUrl: `/icons/ambulance-${ambulance.status.toLowerCase()}.svg`,
-                          iconSize: [32, 32],
-                          iconAnchor: [16, 32]
-                        })}
-                      >
-                        <Popup>
-                          <div className="p-2">
-                            <h3 className="font-bold">{ambulance.registrationNumber}</h3>
-                            <p>Type: {ambulance.type}</p>
-                            <p>Status: {ambulance.status}</p>
-                            <p>Driver: {ambulance.driverName}</p>
-                            <p>Fuel: {ambulance.fuelLevel}%</p>
-                            <p className="text-xs text-gray-500">
-                              Last update: {formatTimeAgo(ambulance.lastUpdate)}
-                            </p>
-                          </div>
-                        </Popup>
-                      </Marker>
-                    ))}
-                    
-                    {emergencies.map((emergency) => (
-                      <Marker 
-                        key={emergency.id} 
-                        position={[emergency.lat, emergency.lng]}
-                        icon={L.icon({
-                          iconUrl: `/icons/emergency-${emergency.severity.toLowerCase()}.svg`,
-                          iconSize: [32, 32],
-                          iconAnchor: [16, 32]
-                        })}
-                      >
-                        <Popup>
-                          <div className="p-2">
-                            <h3 className="font-bold">{emergency.emergencyType}</h3>
-                            <p>Severity: {emergency.severity}</p>
-                            <p>{emergency.description}</p>
-                            <p className="text-xs text-gray-500">
-                              Reported: {formatTimeAgo(emergency.callReceived)}
-                            </p>
-                          </div>
-                        </Popup>
-                      </Marker>
-                    ))}
-                    
-                    {hospitals.map((hospital) => (
-                      <Marker 
-                        key={hospital.id} 
-                        position={[hospital.lat, hospital.lng]}
-                        icon={L.icon({
-                          iconUrl: '/icons/hospital.svg',
-                          iconSize: [32, 32],
-                          iconAnchor: [16, 32]
-                        })}
-                      >
-                        <Popup>
-                          <div className="p-2">
-                            <h3 className="font-bold">{hospital.name}</h3>
-                            <p>Type: {hospital.type.replace('_', ' ')}</p>
-                            <p>Available Beds: {hospital.availableBeds}</p>
-                            <p>Available ICU Beds: {hospital.availableIcuBeds}</p>
-                            <p>Status: {hospital.status.replace('_', ' ')}</p>
-                          </div>
-                        </Popup>
-                      </Marker>
-                    ))}
-                  </MapContainer> */}
+                  {/* Map implementation would go here with proper Leaflet integration */}
                 </div>
               )}
             </CardContent>

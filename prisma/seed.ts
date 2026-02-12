@@ -1,7 +1,5 @@
 // prisma/seed.ts
 import { PrismaClient } from '@prisma/client'
-const bcryptjs = await import('bcryptjs');
-const hash = bcryptjs.hash;
 
 const prisma = new PrismaClient()
 
@@ -226,7 +224,6 @@ async function seedHospitals() {
       totalBeds: 1800,
       functionalBeds: 1650,
       icuBeds: 45,
-      // REMOVE THIS LINE: hduBeds: 25,
       hdUnitBeds: 15,
       maternityBeds: 180,
       pediatricBeds: 150,
@@ -296,7 +293,6 @@ async function seedHospitals() {
       totalBeds: 450,
       functionalBeds: 420,
       icuBeds: 12,
-      // REMOVE THIS LINE: hduBeds: 8,
       hdUnitBeds: 6,
       maternityBeds: 60,
       pediatricBeds: 45,
@@ -366,7 +362,6 @@ async function seedHospitals() {
       totalBeds: 550,
       functionalBeds: 500,
       icuBeds: 15,
-      // REMOVE THIS LINE: hduBeds: 10,
       hdUnitBeds: 8,
       maternityBeds: 75,
       pediatricBeds: 60,
@@ -436,7 +431,6 @@ async function seedHospitals() {
       totalBeds: 120,
       functionalBeds: 95,
       icuBeds: 4,
-      // REMOVE THIS LINE: hduBeds: 2,
       hdUnitBeds: 2,
       maternityBeds: 25,
       pediatricBeds: 20,
@@ -506,7 +500,6 @@ async function seedHospitals() {
       totalBeds: 380,
       functionalBeds: 350,
       icuBeds: 10,
-      // REMOVE THIS LINE: hduBeds: 6,
       hdUnitBeds: 4,
       maternityBeds: 50,
       pediatricBeds: 40,
@@ -941,7 +934,7 @@ async function seedStaff() {
   await prisma.staff.deleteMany({})
 
   const staff = [
-    // Super Admin - Use ADMINISTRATOR or HOSPITAL_DIRECTOR instead of SUPER_ADMIN
+    // Super Admin
     {
       id: 'staff-superadmin',
       userId: 'superadmin-001',
@@ -951,7 +944,7 @@ async function seedStaff() {
       email: 'superadmin@health.go.ke',
       phone: '+254-722-000001',
       nationalId: '30000001',
-      role: 'ADMINISTRATOR', // Changed from SUPER_ADMIN
+      role: 'ADMINISTRATOR',
       specialization: 'System Administration',
       licenseNumber: 'SYS-ADMIN-001',
       licensingBody: 'Ministry of Health',
@@ -982,7 +975,7 @@ async function seedStaff() {
       email: 'countyadmin@health.go.ke',
       phone: '+254-722-000002',
       nationalId: '30000002',
-      role: 'ADMINISTRATOR', // Changed from COUNTY_ADMIN
+      role: 'ADMINISTRATOR',
       specialization: 'Health Administration',
       licenseNumber: 'COUNTY-ADMIN-001',
       licensingBody: 'County Government',
@@ -1013,7 +1006,7 @@ async function seedStaff() {
       email: 'hospitaladmin@health.go.ke',
       phone: '+254-722-000003',
       nationalId: '30000003',
-      role: 'ADMINISTRATOR', // Changed from HOSPITAL_ADMIN
+      role: 'ADMINISTRATOR',
       specialization: 'Hospital Management',
       licenseNumber: 'HOSP-ADMIN-001',
       licensingBody: 'Hospital Board',
@@ -1044,7 +1037,7 @@ async function seedStaff() {
       email: 'doctor@health.go.ke',
       phone: '+254-722-000004',
       nationalId: '30000004',
-      role: 'MEDICAL_OFFICER', // Changed from DOCTOR
+      role: 'MEDICAL_OFFICER',
       specialization: 'Emergency Medicine',
       licenseNumber: 'MPDB-001234',
       licensingBody: 'Medical Practitioners & Dentists Board',
@@ -1106,7 +1099,7 @@ async function seedStaff() {
       email: 'triage@health.go.ke',
       phone: '+254-722-000006',
       nationalId: '30000006',
-      role: 'TRIAGE_NURSE', // Changed from TRIAGE_OFFICER
+      role: 'TRIAGE_NURSE',
       specialization: 'Emergency Triage',
       licenseNumber: 'TRIAGE-001',
       licensingBody: 'Ministry of Health',

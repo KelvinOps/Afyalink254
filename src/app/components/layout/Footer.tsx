@@ -21,7 +21,6 @@ import {
   Instagram,
   MessageCircle,
   Download,
-  Bell,
   AlertTriangle,
   Ambulance,
   Stethoscope,

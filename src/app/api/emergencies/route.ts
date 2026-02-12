@@ -40,6 +40,21 @@ const updateEmergencySchema = z.object({
   status: z.enum(['REPORTED', 'CONFIRMED', 'RESPONDING', 'ON_SCENE', 'UNDER_CONTROL', 'RESOLVED', 'ARCHIVED']).optional() // Added status field
 });
 
+// Type for emergency with included relations (used in notifications)
+interface EmergencyWithCounty {
+  id: string
+  emergencyNumber: string
+  type: string
+  severity: string
+  location: string
+  countyId: string
+  county: {
+    name: string
+    governorName: string | null
+    healthCECName: string | null
+  }
+}
+
 // GET /api/emergencies - List emergencies with filtering
 export async function GET(request: NextRequest) {
   try {
@@ -64,12 +79,12 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.EmergencyWhereInput = {};
 
-    if (status) where.status = status;
+    if (status) where.status = status as Prisma.EmergencyWhereInput['status'];
     if (countyId) where.countyId = countyId;
-    if (type) where.type = type;
-    if (severity) where.severity = severity;
+    if (type) where.type = type as Prisma.EmergencyWhereInput['type'];
+    if (severity) where.severity = severity as Prisma.EmergencyWhereInput['severity'];
 
     if (user.role === 'COUNTY_ADMIN') {
       where.countyId = user.countyId;
@@ -369,7 +384,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Build update data properly
-    const updateData: any = {};
+    const updateData: Prisma.EmergencyUpdateInput = {};
     
     // Handle optional fields
     if (data.type !== undefined) updateData.type = data.type;
@@ -447,7 +462,7 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-async function triggerEmergencyNotifications(emergency: any) {
+async function triggerEmergencyNotifications(emergency: EmergencyWithCounty) {
   try {
     console.log(`Emergency ${emergency.emergencyNumber} created - triggering notifications`);
     
@@ -490,7 +505,7 @@ async function triggerEmergencyNotifications(emergency: any) {
       }
     });
 
-    for (const center of dispatchCenters) {
+    for (const _center of dispatchCenters) {
       await prisma.systemAlert.create({
         data: {
           alertNumber: `DISPATCH-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,

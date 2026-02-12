@@ -3,22 +3,29 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Staff, StaffSearchParams } from '@/app/types/staff.types'
-import { StaffRole, EmploymentType, FacilityType } from '@prisma/client'
+import { StaffRole } from '@prisma/client'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/app/components/ui/table'
 import { Badge } from '@/app/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select'
-import { Search, Plus, Edit, MoreHorizontal } from 'lucide-react'
+import { Plus, Edit, MoreHorizontal } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/app/components/ui/dropdown-menu'
 import { Pagination } from '@/app/components/shared/Pagination'
 import { LoadingSpinner } from '@/app/components/shared/LoadingSpinner'
 import { EmptyState } from '@/app/components/shared/EmptyState'
 
+interface PaginationInfo {
+  page: number
+  limit: number
+  total: number
+  pages: number
+}
+
 interface StaffListProps {
   initialStaff?: Staff[]
-  initialPagination?: any
+  initialPagination?: PaginationInfo
   hospitalId?: string
 }
 
@@ -31,7 +38,7 @@ export function StaffList({ initialStaff, initialPagination, hospitalId }: Staff
     limit: 50,
     hospitalId
   })
-  const [pagination, setPagination] = useState(initialPagination)
+  const [pagination, setPagination] = useState<PaginationInfo | undefined>(initialPagination)
 
   const fetchStaff = async (params: StaffSearchParams) => {
     setLoading(true)
@@ -61,9 +68,10 @@ export function StaffList({ initialStaff, initialPagination, hospitalId }: Staff
     if (!initialStaff) {
       fetchStaff(searchParams)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleSearch = (field: keyof StaffSearchParams, value: any) => {
+  const handleSearch = (field: keyof StaffSearchParams, value: string | boolean | undefined) => {
     const newParams = { ...searchParams, [field]: value, page: 1 }
     setSearchParams(newParams)
     fetchStaff(newParams)

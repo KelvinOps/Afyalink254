@@ -1,3 +1,4 @@
+// src/app/(dashboard)/resources/equipment/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -7,14 +8,25 @@ import { Badge } from '@/app/components/ui/badge'
 import { Input } from '@/app/components/ui/input'
 import { 
   Stethoscope, 
-  Plus, 
   Search, 
-  Filter,
   Download,
   RefreshCw,
   Wrench,
   AlertTriangle
 } from 'lucide-react'
+
+// Define a proper type for specifications
+interface EquipmentSpecifications {
+  manufacturer?: string
+  model?: string
+  serialNumber?: string
+  year?: number
+  location?: string
+  powerRequirements?: string
+  weight?: string
+  dimensions?: string
+  [key: string]: string | number | undefined
+}
 
 interface EquipmentResource {
   id: string
@@ -29,7 +41,7 @@ interface EquipmentResource {
   isCritical: boolean
   lastMaintenance?: string
   nextMaintenance?: string
-  specifications: any
+  specifications: EquipmentSpecifications
   lastUpdated: string
 }
 
@@ -62,7 +74,7 @@ export default function EquipmentPage() {
     (filterStatus === '' || item.status === filterStatus)
   )
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): string => {
     switch (status) {
       case 'AVAILABLE': return 'bg-green-100 text-green-800'
       case 'IN_USE': return 'bg-blue-100 text-blue-800'
@@ -72,7 +84,7 @@ export default function EquipmentPage() {
     }
   }
 
-  const needsMaintenance = (item: EquipmentResource) => {
+  const needsMaintenance = (item: EquipmentResource): boolean => {
     if (!item.nextMaintenance) return false
     const nextMaintenance = new Date(item.nextMaintenance)
     const today = new Date()
@@ -80,18 +92,43 @@ export default function EquipmentPage() {
     return daysUntilMaintenance <= 7
   }
 
-  const statusOptions = ['AVAILABLE', 'IN_USE', 'MAINTENANCE', 'OUT_OF_ORDER']
+  const statusOptions: Array<'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'OUT_OF_ORDER'> = [
+    'AVAILABLE', 
+    'IN_USE', 
+    'MAINTENANCE', 
+    'OUT_OF_ORDER'
+  ]
 
   if (loading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-48 bg-gray-200 rounded"></div>
-            ))}
+      <div className="container mx-auto p-6 space-y-6">
+        {/* Header Skeleton */}
+        <div className="flex justify-between items-center">
+          <div>
+            <div className="h-8 w-64 bg-gray-200 rounded animate-pulse"></div>
+            <div className="h-4 w-96 bg-gray-200 rounded mt-2 animate-pulse"></div>
           </div>
+          <div className="flex gap-2">
+            <div className="h-10 w-24 bg-gray-200 rounded animate-pulse"></div>
+            <div className="h-10 w-24 bg-gray-200 rounded animate-pulse"></div>
+          </div>
+        </div>
+
+        {/* Filters Skeleton */}
+        <div className="h-16 bg-gray-200 rounded animate-pulse"></div>
+
+        {/* Stats Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-24 bg-gray-200 rounded animate-pulse"></div>
+          ))}
+        </div>
+
+        {/* Equipment Grid Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-64 bg-gray-200 rounded animate-pulse"></div>
+          ))}
         </div>
       </div>
     )
@@ -100,7 +137,7 @@ export default function EquipmentPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Equipment Management</h1>
           <p className="text-muted-foreground">
@@ -121,13 +158,13 @@ export default function EquipmentPage() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search equipment..."
+                  placeholder="Search equipment by name..."
                   className="pl-9"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -136,9 +173,10 @@ export default function EquipmentPage() {
             </div>
             <div className="w-full sm:w-48">
               <select 
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
+                aria-label="Filter by status"
               >
                 <option value="">All Status</option>
                 {statusOptions.map(status => (
@@ -161,6 +199,9 @@ export default function EquipmentPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{equipment.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Across all departments
+            </p>
           </CardContent>
         </Card>
 
@@ -173,6 +214,9 @@ export default function EquipmentPage() {
             <div className="text-2xl font-bold text-green-600">
               {equipment.filter(item => item.isOperational).length}
             </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {((equipment.filter(item => item.isOperational).length / (equipment.length || 1)) * 100).toFixed(0)}% of total
+            </p>
           </CardContent>
         </Card>
 
@@ -185,6 +229,9 @@ export default function EquipmentPage() {
             <div className="text-2xl font-bold text-orange-600">
               {equipment.filter(needsMaintenance).length}
             </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Within next 7 days
+            </p>
           </CardContent>
         </Card>
 
@@ -197,6 +244,9 @@ export default function EquipmentPage() {
             <div className="text-2xl font-bold text-red-600">
               {equipment.filter(item => item.isCritical).length}
             </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Requires immediate attention
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -204,81 +254,131 @@ export default function EquipmentPage() {
       {/* Equipment Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredEquipment.map((item) => (
-          <Card key={item.id} className={`relative ${
-            item.isCritical ? 'border-red-300 bg-red-50' : 
-            !item.isOperational ? 'border-gray-300 bg-gray-50' : ''
+          <Card key={item.id} className={`relative overflow-hidden transition-all hover:shadow-lg ${
+            item.isCritical ? 'border-red-300 bg-red-50/50' : 
+            !item.isOperational ? 'border-gray-300 bg-gray-50/50' : ''
           }`}>
+            {/* Status Indicators */}
             {item.isCritical && (
-              <div className="absolute top-2 right-2">
+              <div className="absolute top-2 right-2 z-10">
                 <Badge variant="destructive">Critical</Badge>
               </div>
             )}
             {needsMaintenance(item) && (
-              <div className="absolute top-2 left-2">
-                <Badge variant="outline" className="bg-orange-100 text-orange-800">
+              <div className="absolute top-2 left-2 z-10">
+                <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-200">
                   <Wrench className="w-3 h-3 mr-1" />
                   Maintenance Due
                 </Badge>
               </div>
             )}
-            <CardHeader>
+            
+            <CardHeader className="pb-3">
               <div className="flex justify-between items-start">
                 <div>
-                  <CardTitle className="text-lg">{item.name}</CardTitle>
-                  <CardDescription>
+                  <CardTitle className="text-lg font-semibold">{item.name}</CardTitle>
+                  <CardDescription className="mt-1">
                     {item.category} • {item.department}
                   </CardDescription>
                 </div>
-                <Badge className={getStatusColor(item.status)}>
+                <Badge className={`${getStatusColor(item.status)} border-0`}>
                   {item.status.replace('_', ' ')}
                 </Badge>
               </div>
             </CardHeader>
+            
             <CardContent className="space-y-4">
               {/* Availability */}
               <div>
                 <div className="flex justify-between text-sm mb-1">
-                  <span>Availability</span>
-                  <span>{item.availableCapacity}/{item.totalCapacity}</span>
+                  <span className="text-muted-foreground">Availability</span>
+                  <span className="font-medium">{item.availableCapacity}/{item.totalCapacity}</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
                   <div 
-                    className={`h-2 rounded-full transition-all duration-300 ${
+                    className={`h-2.5 rounded-full transition-all duration-300 ${
                       item.availableCapacity === 0 ? 'bg-red-500' :
                       item.availableCapacity < item.totalCapacity * 0.3 ? 'bg-orange-500' : 'bg-green-500'
                     }`}
-                    style={{ width: `${(item.availableCapacity / item.totalCapacity) * 100}%` }}
-                  ></div>
+                    style={{ width: `${Math.min((item.availableCapacity / item.totalCapacity) * 100, 100)}%` }}
+                    role="progressbar"
+                    aria-valuenow={(item.availableCapacity / item.totalCapacity) * 100}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  />
                 </div>
               </div>
 
-              {/* Maintenance Info */}
-              {item.lastMaintenance && (
-                <div className="text-sm">
-                  <div className="text-muted-foreground">Last Maintenance</div>
-                  <div>{new Date(item.lastMaintenance).toLocaleDateString()}</div>
-                </div>
-              )}
+              {/* Equipment Details */}
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {item.specifications.manufacturer && (
+                  <>
+                    <span className="text-muted-foreground">Manufacturer</span>
+                    <span className="font-medium text-right">{item.specifications.manufacturer}</span>
+                  </>
+                )}
+                {item.specifications.model && (
+                  <>
+                    <span className="text-muted-foreground">Model</span>
+                    <span className="font-medium text-right">{item.specifications.model}</span>
+                  </>
+                )}
+                {item.specifications.location && (
+                  <>
+                    <span className="text-muted-foreground">Location</span>
+                    <span className="font-medium text-right">{item.specifications.location}</span>
+                  </>
+                )}
+              </div>
 
-              {item.nextMaintenance && (
-                <div className="text-sm">
-                  <div className="text-muted-foreground">Next Maintenance</div>
-                  <div className={needsMaintenance(item) ? 'text-orange-600 font-semibold' : ''}>
-                    {new Date(item.nextMaintenance).toLocaleDateString()}
-                  </div>
+              {/* Maintenance Info */}
+              {(item.lastMaintenance || item.nextMaintenance) && (
+                <div className="border-t pt-3">
+                  {item.lastMaintenance && (
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-muted-foreground">Last Maintenance</span>
+                      <span className="font-medium">
+                        {new Date(item.lastMaintenance).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                  )}
+                  {item.nextMaintenance && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Next Maintenance</span>
+                      <span className={`font-medium ${
+                        needsMaintenance(item) ? 'text-orange-600' : ''
+                      }`}>
+                        {new Date(item.nextMaintenance).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Operational Status */}
-              <div className="flex justify-between items-center text-sm">
-                <span>Operational:</span>
+              <div className="flex justify-between items-center text-sm border-t pt-3">
+                <span className="text-muted-foreground">Operational Status</span>
                 <Badge variant={item.isOperational ? "default" : "destructive"}>
-                  {item.isOperational ? 'Yes' : 'No'}
+                  {item.isOperational ? 'Operational' : 'Non-Operational'}
                 </Badge>
               </div>
 
-              <div className="text-xs text-muted-foreground">
-                Updated: {new Date(item.lastUpdated).toLocaleString()}
+              <div className="text-xs text-muted-foreground italic">
+                Last updated: {new Date(item.lastUpdated).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
               </div>
             </CardContent>
           </Card>
@@ -286,16 +386,30 @@ export default function EquipmentPage() {
       </div>
 
       {filteredEquipment.length === 0 && (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <Stethoscope className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+        <Card className="border-dashed">
+          <CardContent className="p-12 text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+              <Stethoscope className="h-8 w-8 text-gray-400" />
+            </div>
             <h3 className="text-lg font-semibold mb-2">No equipment found</h3>
-            <p className="text-muted-foreground mb-4">
+            <p className="text-muted-foreground max-w-md mx-auto">
               {searchTerm || filterStatus 
-                ? 'Try adjusting your search criteria' 
-                : 'No equipment resources configured yet'
+                ? 'Try adjusting your search or filter criteria to find what you\'re looking for'
+                : 'No equipment resources have been configured yet. Add equipment to get started.'
               }
             </p>
+            {(searchTerm || filterStatus) && (
+              <Button 
+                variant="outline" 
+                className="mt-4"
+                onClick={() => {
+                  setSearchTerm('')
+                  setFilterStatus('')
+                }}
+              >
+                Clear filters
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}

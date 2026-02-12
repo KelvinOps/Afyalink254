@@ -7,14 +7,25 @@ import {
   Stethoscope, 
   User, 
   FileText, 
-  CheckCircle,
   Clock,
-  AlertTriangle
+  LucideIcon
 } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { cn } from "../../lib/utils"
 
-const activities = [
+type ActivityStatus = "critical" | "completed" | "pending" | "in-progress"
+
+interface Activity {
+  type: string
+  title: string
+  description: string
+  time: string
+  icon: LucideIcon
+  status: ActivityStatus
+  user: string
+}
+
+const activities: Activity[] = [
   {
     type: "dispatch",
     title: "New emergency dispatch",
@@ -62,7 +73,14 @@ const activities = [
   }
 ]
 
-const statusConfig = {
+type BadgeVariant = "destructive" | "secondary" | "outline" | "default"
+
+interface StatusConfig {
+  variant: BadgeVariant
+  label: string
+}
+
+const statusConfig: Record<ActivityStatus, StatusConfig> = {
   critical: { variant: "destructive", label: "Critical" },
   completed: { variant: "secondary", label: "Completed" },
   pending: { variant: "outline", label: "Pending" },
@@ -80,36 +98,41 @@ export function RecentActivity() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {activities.map((activity, index) => (
-            <div key={index} className="flex items-start space-x-4">
-              <div className={cn(
-                "flex-shrink-0 rounded-full p-2",
-                activity.status === "critical" ? "bg-red-100" :
-                activity.status === "completed" ? "bg-green-100" :
-                activity.status === "in-progress" ? "bg-blue-100" : "bg-gray-100"
-              )}>
-                <activity.icon className={cn(
-                  "h-4 w-4",
-                  activity.status === "critical" ? "text-red-600" :
-                  activity.status === "completed" ? "text-green-600" :
-                  activity.status === "in-progress" ? "text-blue-600" : "text-gray-600"
-                )} />
-              </div>
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">{activity.title}</p>
-                  <Badge variant={statusConfig[activity.status as keyof typeof statusConfig]?.variant as any}>
-                    {statusConfig[activity.status as keyof typeof statusConfig]?.label}
-                  </Badge>
+          {activities.map((activity, index) => {
+            const ActivityIcon = activity.icon
+            const config = statusConfig[activity.status]
+            
+            return (
+              <div key={index} className="flex items-start space-x-4">
+                <div className={cn(
+                  "flex-shrink-0 rounded-full p-2",
+                  activity.status === "critical" ? "bg-red-100" :
+                  activity.status === "completed" ? "bg-green-100" :
+                  activity.status === "in-progress" ? "bg-blue-100" : "bg-gray-100"
+                )}>
+                  <ActivityIcon className={cn(
+                    "h-4 w-4",
+                    activity.status === "critical" ? "text-red-600" :
+                    activity.status === "completed" ? "text-green-600" :
+                    activity.status === "in-progress" ? "text-blue-600" : "text-gray-600"
+                  )} />
                 </div>
-                <p className="text-sm text-muted-foreground">{activity.description}</p>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>By {activity.user}</span>
-                  <span>{activity.time}</span>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{activity.title}</p>
+                    <Badge variant={config.variant}>
+                      {config.label}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{activity.description}</p>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>By {activity.user}</span>
+                    <span>{activity.time}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </CardContent>
     </Card>

@@ -1,6 +1,7 @@
 // src/components/dashboard/TriageQueueWidget.tsx
 'use client'
 
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
 import { Badge } from "../ui/badge"
 import { Button } from "../ui/button"
@@ -127,18 +128,18 @@ export function TriageQueueWidget() {
                   <p className="text-sm font-medium">{patient.waitingTime}</p>
                 </div>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0" asChild>
-                  <a href={`/triage/${patient.id}`}>
+                  <Link href={`/triage/${patient.id}`}>
                     <ArrowRight className="h-4 w-4" />
-                  </a>
+                  </Link>
                 </Button>
               </div>
             </div>
           ))}
         </div>
         <Button variant="outline" className="w-full mt-4" asChild>
-          <a href="/triage">
+          <Link href="/triage">
             View All Patients
-          </a>
+          </Link>
         </Button>
       </CardContent>
     </Card>

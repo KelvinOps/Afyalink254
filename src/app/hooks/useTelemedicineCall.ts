@@ -25,6 +25,8 @@ interface UseTelemedicineCallReturn {
   toggleVideo: () => void
   isStarting: boolean
   error: string | null
+  isAudioEnabled: boolean
+  isVideoEnabled: boolean
 }
 
 export function useTelemedicineCall(sessionId: string): UseTelemedicineCallReturn {
@@ -203,6 +205,8 @@ export function useTelemedicineCall(sessionId: string): UseTelemedicineCallRetur
     toggleAudio,
     toggleVideo,
     isStarting,
-    error
+    error,
+    isAudioEnabled,
+    isVideoEnabled
   }
 }

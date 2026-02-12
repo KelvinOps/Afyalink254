@@ -1,7 +1,7 @@
 // src/app/lib/auth-options.ts
 import { NextAuthOptions, DefaultSession, DefaultUser } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import { getPermissionsForRole, normalizeRole } from './auth'
+import { getPermissionsForRole } from './auth'
 
 // Define the User type from your existing auth system
 export interface AppUser {

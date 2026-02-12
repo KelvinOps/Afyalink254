@@ -1,7 +1,6 @@
 // app/components/hospitals/HospitalList.tsx
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Badge } from '@/app/components/ui/badge'
@@ -35,8 +34,6 @@ interface HospitalListProps {
 }
 
 export function HospitalList({ hospitals, pagination, user }: HospitalListProps) {
-  const [currentPage, setCurrentPage] = useState(pagination.currentPage)
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'OPERATIONAL': return 'bg-green-100 text-green-800 border-green-200'
@@ -171,7 +168,7 @@ export function HospitalList({ hospitals, pagination, user }: HospitalListProps)
               <PaginationContent>
                 <PaginationItem>
                   <PaginationPrevious 
-                    href={pagination.hasPrev ? `?page=${currentPage - 1}` : '#'}
+                    href={pagination.hasPrev ? `?page=${pagination.currentPage - 1}` : '#'}
                     className={!pagination.hasPrev ? 'pointer-events-none opacity-50' : ''}
                   />
                 </PaginationItem>
@@ -180,7 +177,7 @@ export function HospitalList({ hospitals, pagination, user }: HospitalListProps)
                   <PaginationItem key={page}>
                     <PaginationLink
                       href={`?page=${page}`}
-                      isActive={page === currentPage}
+                      isActive={page === pagination.currentPage}
                     >
                       {page}
                     </PaginationLink>
@@ -189,7 +186,7 @@ export function HospitalList({ hospitals, pagination, user }: HospitalListProps)
                 
                 <PaginationItem>
                   <PaginationNext 
-                    href={pagination.hasNext ? `?page=${currentPage + 1}` : '#'}
+                    href={pagination.hasNext ? `?page=${pagination.currentPage + 1}` : '#'}
                     className={!pagination.hasNext ? 'pointer-events-none opacity-50' : ''}
                   />
                 </PaginationItem>

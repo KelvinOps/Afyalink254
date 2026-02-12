@@ -4,10 +4,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/app/lib/utils'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/app/components/ui/button'
 import { ScrollArea } from '@/app/components/ui/scroll-area'
-import { Badge } from '@/app/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/app/components/ui/collapsible'
 import { useAuth } from '@/app/contexts/AuthContext'
 import {
@@ -26,40 +25,19 @@ import {
   UserCog,
   Building,
   ClipboardList,
-  Shield,
-  Heart,
   Bed,
-  Microscope,
-  Pill,
   MapPin,
   Clock,
   AlertTriangle,
-  Bell,
-  Database,
   Server,
-  Network,
-  PhoneCall,
-  MessageCircle,
-  Download,
-  Upload,
-  Archive,
   Search,
-  Calendar,
+  Plus,
   FileSearch,
-  TrendingUp,
   Activity,
   Map,
-  Radio,
-  Car,
-  Plane,
-  ClipboardCheck,
-  Calculator,
-  ShieldCheck,
   ChevronDown,
-  ChevronRight,
   X,
-  LogOut,
-  Plus
+  LogOut
 } from 'lucide-react'
 
 // Define all user roles with their display names
@@ -81,9 +59,38 @@ const USER_ROLES = {
   EMERGENCY_MANAGER: 'Emergency Manager'
 }
 
+// Define navigation item interface
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  permission?: string;
+  roles: string[];
+  description?: string;
+  subItems?: SubItem[];
+}
+
+interface SubItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  permission?: string;
+  roles: string[];
+}
+
+interface NavigationSection {
+  name: string;
+  roles: string[];
+  items: NavigationItem[];
+}
+
+interface NavigationStructure {
+  [key: string]: NavigationSection;
+}
+
 // Enhanced navigation structure with role-based access control
 // NOTE: Using ADMIN for all admin types since backend normalizes to ADMIN
-const navigationStructure = {
+const navigationStructure: NavigationStructure = {
   core: {
     name: 'Core Operations',
     roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'NURSE', 'TRIAGE_OFFICER', 'DISPATCHER', 'DISPATCH_COORDINATOR', 'AMBULANCE_DRIVER', 'AMBULANCE_CREW', 'FINANCE_OFFICER', 'LAB_TECHNICIAN', 'PHARMACIST', 'EMERGENCY_MANAGER'],
@@ -425,12 +432,19 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     monitoring: false
   })
 
-  // Close sidebar when route changes on mobile
-  useEffect(() => {
-    if (isOpen && onClose) {
+  // Wrap onClose in useCallback to stabilize its reference
+  const handleClose = useCallback(() => {
+    if (onClose) {
       onClose()
     }
-  }, [pathname])
+  }, [onClose])
+
+  // Close sidebar when route changes on mobile
+  useEffect(() => {
+    if (isOpen) {
+      handleClose()
+    }
+  }, [pathname, isOpen, handleClose])
 
   // Debug log user info
   useEffect(() => {
@@ -457,7 +471,7 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   }
 
   // Enhanced helper function to check if user has access to an item
-  const hasAccess = (item: any): boolean => {
+  const hasAccess = (item: NavigationItem | SubItem): boolean => {
     if (!user) {
       console.log('❌ hasAccess: No user')
       return false
@@ -527,13 +541,13 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     return true
   }
 
-  const NavigationItem = ({ item, level = 0 }: { item: any; level?: number }) => {
+  const NavigationItem = ({ item }: { item: NavigationItem }) => {
     const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`)
     const hasSubItems = item.subItems && item.subItems.length > 0
     const Icon = item.icon
     
-    const filteredSubItems = hasSubItems 
-      ? item.subItems.filter((subItem: any) => hasAccess(subItem))
+    const filteredSubItems = hasSubItems && item.subItems
+      ? item.subItems.filter((subItem) => hasAccess(subItem))
       : []
 
     const shouldShowItem = hasAccess(item) || 
@@ -578,7 +592,7 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             
             {filteredSubItems.length > 0 && (
               <CollapsibleContent className="space-y-1 pl-4">
-                {filteredSubItems.map((subItem: any) => (
+                {filteredSubItems.map((subItem) => (
                   <Link
                     key={subItem.href}
                     href={subItem.href}
@@ -588,7 +602,7 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                         ? "bg-blue-50 text-blue-700 font-medium" 
                         : "text-slate-600 hover:text-slate-900"
                     )}
-                    onClick={onClose}
+                    onClick={handleClose}
                   >
                     <subItem.icon className={cn(
                       "h-4 w-4",
@@ -609,7 +623,7 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 ? "bg-blue-50 text-blue-700 font-medium" 
                 : "text-slate-600 hover:text-slate-900"
             )}
-            onClick={onClose}
+            onClick={handleClose}
           >
             <Icon className={cn(
               "h-4 w-4",
@@ -623,7 +637,7 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   }
 
   // Filter sections based on user role
-  const filteredSections = Object.entries(navigationStructure).filter(([sectionKey, section]) => {
+  const filteredSections = Object.entries(navigationStructure).filter(([, section]) => {
     const userNormalizedRole = normalizeRole(user.role)
     
     console.log(`🔍 Checking section "${section.name}" for role ${userNormalizedRole}`)
@@ -657,7 +671,7 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={onClose}
+          onClick={handleClose}
         />
       )}
 
@@ -685,7 +699,7 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           
           {/* Close button for mobile */}
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="lg:hidden p-2 rounded-lg hover:bg-slate-100 ml-auto transition-colors"
           >
             <X className="h-4 w-4" />
@@ -713,9 +727,9 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               </div>
             ) : (
               filteredSections.map(([sectionKey, section]) => {
-                const filteredItems = section.items.filter((item: any) => 
+                const filteredItems = section.items.filter((item: NavigationItem) => 
                   hasAccess(item) || 
-                  (item.subItems && item.subItems.some((subItem: any) => hasAccess(subItem)))
+                  (item.subItems && item.subItems.some((subItem: SubItem) => hasAccess(subItem)))
                 )
 
                 if (filteredItems.length === 0) {
@@ -728,7 +742,7 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                       {section.name}
                     </h3>
                     <div className="space-y-1">
-                      {filteredItems.map((item: any) => (
+                      {filteredItems.map((item: NavigationItem) => (
                         <NavigationItem key={item.href} item={item} />
                       ))}
                     </div>
@@ -755,7 +769,7 @@ function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           <div className="space-y-2">
             {hasPermission('dispatch.write') && (
               <Button variant="outline" size="sm" className="w-full" asChild>
-                <Link href="/dashboard/dispatch/new" onClick={onClose}>
+                <Link href="/dashboard/dispatch/new" onClick={handleClose}>
                   <Ambulance className="h-4 w-4 mr-2" />
                   New Dispatch
                 </Link>

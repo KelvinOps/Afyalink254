@@ -1,12 +1,11 @@
 'use client'
 
-import { Staff } from '@/app/types/staff.types'
 import { StaffRole, EmploymentType, ContractType, FacilityType, Gender } from '@prisma/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Badge } from '@/app/components/ui/badge'
 import { Button } from '@/app/components/ui/button'
 import { Separator } from '@/app/components/ui/separator'
-import { Calendar, Mail, Phone, MapPin, Edit, Clock, User } from 'lucide-react'
+import { Calendar, Mail, Phone, MapPin, Edit, Clock } from 'lucide-react'
 import { format } from 'date-fns'
 import { useRouter } from 'next/navigation'
 

@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/app/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select'
 import { Textarea } from '@/app/components/ui/textarea'
-import { Plus, Search, Users, Stethoscope, Building, Phone, Mail, Edit, Trash2, MoreVertical } from 'lucide-react'
+import { Plus, Search, Users, Stethoscope, Building, Phone, Edit, Trash2 } from 'lucide-react'
 import type { Hospital } from '@/app/lib/types'
 
 // Define User type locally since it's not exported from your types
@@ -418,13 +418,13 @@ interface AddEditDepartmentDialogProps {
 function AddEditDepartmentDialog({ hospital, department, onSave, onCancel }: AddEditDepartmentDialogProps) {
   const [formData, setFormData] = useState({
     name: department?.name || '',
-    type: department?.type || 'CLINICAL',
+    type: department?.type || 'CLINICAL' as Department['type'],
     headOfDepartment: department?.headOfDepartment || '',
     contactEmail: department?.contactEmail || '',
     contactPhone: department?.contactPhone || '',
     totalStaff: department?.totalStaff || 0,
     availableStaff: department?.availableStaff || 0,
-    status: department?.status || 'ACTIVE',
+    status: department?.status || 'ACTIVE' as Department['status'],
     description: department?.description || '',
     services: department?.services || [] as string[]
   })
@@ -482,7 +482,7 @@ function AddEditDepartmentDialog({ hospital, department, onSave, onCancel }: Add
 
           <div className="space-y-2">
             <Label htmlFor="type">Department Type *</Label>
-            <Select value={formData.type} onValueChange={(value: any) => setFormData(prev => ({ ...prev, type: value }))}>
+            <Select value={formData.type} onValueChange={(value: Department['type']) => setFormData(prev => ({ ...prev, type: value }))}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -506,7 +506,7 @@ function AddEditDepartmentDialog({ hospital, department, onSave, onCancel }: Add
 
           <div className="space-y-2">
             <Label htmlFor="status">Status *</Label>
-            <Select value={formData.status} onValueChange={(value: any) => setFormData(prev => ({ ...prev, status: value }))}>
+            <Select value={formData.status} onValueChange={(value: Department['status']) => setFormData(prev => ({ ...prev, status: value }))}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

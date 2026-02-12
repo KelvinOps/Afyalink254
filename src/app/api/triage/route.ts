@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
-import { getServerSession } from 'next-auth' // If using NextAuth
-import { authOptions } from '@/app/lib/auth'
+import { Prisma } from '@prisma/client'
+
+interface VitalSigns {
+  bp?: string | number
+  pulse?: string | number
+  temp?: string | number
+  respRate?: string | number
+  o2Sat?: string | number
+  painScale?: string | number
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +18,7 @@ export async function GET(request: NextRequest) {
     const department = searchParams.get('department')
     const hospitalId = searchParams.get('hospitalId')
     
-    const whereConditions: Record<string, any> = {}
+    const whereConditions: Record<string, unknown> = {}
     
     if (status && status !== 'all') {
       whereConditions.status = status
@@ -231,23 +239,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse vital signs with validation
-    const parseVitalSigns = (vitals: any) => {
-      if (!vitals) return {
-        bp: '',
-        pulse: 0,
-        temp: 0,
-        respRate: 0,
-        o2Sat: 0,
-        painScale: 0
+    const parseVitalSigns = (vitals: VitalSigns | null | undefined): Prisma.InputJsonValue => {
+      if (!vitals) {
+        return {
+          bp: '',
+          pulse: 0,
+          temp: 0,
+          respRate: 0,
+          o2Sat: 0,
+          painScale: 0
+        }
       }
 
       return {
         bp: vitals.bp && typeof vitals.bp === 'string' ? vitals.bp : '',
-        pulse: vitals.pulse ? parseInt(vitals.pulse) || 0 : 0,
-        temp: vitals.temp ? parseFloat(vitals.temp) || 0 : 0,
-        respRate: vitals.respRate ? parseInt(vitals.respRate) || 0 : 0,
-        o2Sat: vitals.o2Sat ? parseInt(vitals.o2Sat) || 0 : 0,
-        painScale: vitals.painScale ? parseInt(vitals.painScale) || 0 : 0
+        pulse: vitals.pulse ? parseInt(String(vitals.pulse)) || 0 : 0,
+        temp: vitals.temp ? parseFloat(String(vitals.temp)) || 0 : 0,
+        respRate: vitals.respRate ? parseInt(String(vitals.respRate)) || 0 : 0,
+        o2Sat: vitals.o2Sat ? parseInt(String(vitals.o2Sat)) || 0 : 0,
+        painScale: vitals.painScale ? parseInt(String(vitals.painScale)) || 0 : 0
       }
     }
 
@@ -267,7 +277,7 @@ export async function POST(request: NextRequest) {
       arrivalMode: arrivalMode || 'WALK_IN',
       vitalSigns: parseVitalSigns(vitalSigns),
       status: 'WAITING' as const,
-      assessedById: systemStaff.id, // Use the system staff ID
+      assessedById: systemStaff.id,
       arrivalTime: new Date(),
       triageTime: new Date(),
       hospitalId,
@@ -330,7 +340,7 @@ export async function POST(request: NextRequest) {
         action: 'CREATE',
         entityType: 'TRIAGE',
         entityId: triageEntry.id,
-        description: `Triage entry created: ${triageEntry.triageNumber} for ${triageEntry.patient.firstName} ${triageEntry.patient.lastName}`,
+        description: `Triage entry created for patient ${patient.firstName} ${patient.lastName}`,
         success: true
       }
     })
@@ -341,11 +351,23 @@ export async function POST(request: NextRequest) {
       message: 'Triage entry created successfully'
     })
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating triage entry:', error)
     
+    // Type guard for Prisma errors
+    interface PrismaError extends Error {
+      code?: string
+      meta?: {
+        field_name?: string
+      }
+    }
+    
+    const isPrismaError = (err: unknown): err is PrismaError => {
+      return typeof err === 'object' && err !== null && 'code' in err
+    }
+    
     // Provide more specific error message
-    if (error.code === 'P2003') {
+    if (isPrismaError(error) && error.code === 'P2003') {
       const fieldName = error.meta?.field_name || 'Unknown field'
       return NextResponse.json(
         { 
@@ -358,7 +380,7 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    if (error.code === 'P2002') {
+    if (isPrismaError(error) && error.code === 'P2002') {
       return NextResponse.json(
         { 
           success: false,
@@ -373,7 +395,7 @@ export async function POST(request: NextRequest) {
       { 
         success: false,
         error: 'Internal server error',
-        details: error.message 
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     )

@@ -7,7 +7,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/app/components/ui/avatar'
 import { 
   Calendar,
   Clock,
-  User,
   Video,
   Bell,
   BellOff,

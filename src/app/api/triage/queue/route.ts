@@ -1,10 +1,8 @@
-//api/queue/route.ts
-
-
-import { NextRequest, NextResponse } from 'next/server'
+// app/api/triage/queue/route.ts
+import { NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const queueEntries = await prisma.triageEntry.findMany({
       where: {

@@ -9,7 +9,6 @@ import {
   MapPin, 
   Clock,
   Radio,
-  CheckCircle
 } from "lucide-react"
 
 const activeDispatches = [

@@ -1,21 +1,21 @@
 // app/components/home/SystemStatusCard.tsx
 'use client'
 
-import { Heart, Clock } from 'lucide-react'
-import { Card, CardContent } from '../ui/card'
-import StatsCard from '@/app/components/dashboard/StatsCard'
+import { Heart, Clock, LucideIcon } from 'lucide-react'
+
+interface SystemStat {
+  label: string
+  value: string
+  icon: LucideIcon
+  change: string
+  changeType: 'positive' | 'negative'
+  color: string
+}
 
 interface SystemStatusCardProps {
   currentTime: Date | null
   formatTime: (date: Date | null) => string
-  systemStats: Array<{
-    label: string
-    value: string
-    icon: any
-    change: string
-    changeType: 'positive' | 'negative'
-    color: string
-  }>
+  systemStats: SystemStat[]
   isOperational: boolean
 }
 
@@ -43,16 +43,19 @@ export default function SystemStatusCard({
 
         {/* Live Stats */}
         <div className="grid grid-cols-2 gap-4">
-          {systemStats.map((stat, index) => (
-            <div key={index} className="text-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-              <stat.icon className={`h-8 w-8 mx-auto mb-2 ${stat.icon.name === 'AlertTriangle' ? 'text-red-500' : 'text-blue-500'}`} />
-              <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-              <div className="text-sm text-gray-600">{stat.label}</div>
-              <div className={`text-xs font-semibold ${stat.changeType === 'positive' ? 'text-green-600' : 'text-red-600'} mt-1`}>
-                {stat.change} from yesterday
+          {systemStats.map((stat, index) => {
+            const IconComponent = stat.icon
+            return (
+              <div key={index} className="text-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                <IconComponent className="h-8 w-8 mx-auto mb-2 text-blue-500" />
+                <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+                <div className="text-sm text-gray-600">{stat.label}</div>
+                <div className={`text-xs font-semibold ${stat.changeType === 'positive' ? 'text-green-600' : 'text-red-600'} mt-1`}>
+                  {stat.change} from yesterday
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Current Time */}

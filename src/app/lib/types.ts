@@ -1,3 +1,11 @@
+// src/app/lib/types.ts
+
+// Define a proper interface for coordinates
+export interface Coordinates {
+  lat: number
+  lng: number
+  accuracy?: number
+}
 
 export interface User {
   id: string
@@ -27,7 +35,7 @@ export interface Hospital {
   subCounty?: string | null
   ward?: string | null
   address: string
-  coordinates: any
+  coordinates: Coordinates
   phone: string
   emergencyPhone?: string | null
   email?: string | null

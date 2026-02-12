@@ -12,8 +12,65 @@ interface HospitalDepartmentsPageProps {
   }>
 }
 
+// Type definitions for hospital data structures
+interface PerformanceMetric {
+  date?: Date | null
+  createdAt?: Date | null
+  updatedAt?: Date | null
+  [key: string]: unknown
+}
+
+interface Department {
+  createdAt?: Date | null
+  updatedAt?: Date | null
+  [key: string]: unknown
+}
+
+interface StaffMember {
+  hireDate?: Date | null
+  lastPaidDate?: Date | null
+  shiftStart?: Date | null
+  shiftEnd?: Date | null
+  createdAt?: Date | null
+  updatedAt?: Date | null
+  [key: string]: unknown
+}
+
+interface Resource {
+  lastMaintenance?: Date | null
+  nextMaintenance?: Date | null
+  lastRestock?: Date | null
+  expiryDate?: Date | null
+  createdAt?: Date | null
+  updatedAt?: Date | null
+  [key: string]: unknown
+}
+
+interface County {
+  createdAt?: Date | null
+  updatedAt?: Date | null
+  [key: string]: unknown
+}
+
+interface HospitalData {
+  id: string
+  name: string
+  code: string
+  type: string
+  lastBedUpdate?: Date | null
+  shaActivationDate?: Date | null
+  createdAt?: Date | null
+  updatedAt?: Date | null
+  performanceMetrics?: PerformanceMetric[]
+  departments?: Department[]
+  staff?: StaffMember[]
+  resources?: Resource[]
+  county?: County | null
+  [key: string]: unknown
+}
+
 // Helper function to transform Date objects to strings
-function transformHospitalDates(hospital: any) {
+function transformHospitalDates(hospital: HospitalData): Record<string, unknown> {
   return {
     ...hospital,
     lastBedUpdate: hospital.lastBedUpdate?.toISOString() || null,
@@ -21,18 +78,18 @@ function transformHospitalDates(hospital: any) {
     createdAt: hospital.createdAt?.toISOString() || null,
     updatedAt: hospital.updatedAt?.toISOString() || null,
     // Transform any other Date fields as needed
-    performanceMetrics: hospital.performanceMetrics?.map((metric: any) => ({
+    performanceMetrics: hospital.performanceMetrics?.map((metric: PerformanceMetric) => ({
       ...metric,
       date: metric.date?.toISOString() || null,
       createdAt: metric.createdAt?.toISOString() || null,
       updatedAt: metric.updatedAt?.toISOString() || null,
     })) || [],
-    departments: hospital.departments?.map((dept: any) => ({
+    departments: hospital.departments?.map((dept: Department) => ({
       ...dept,
       createdAt: dept.createdAt?.toISOString() || null,
       updatedAt: dept.updatedAt?.toISOString() || null,
     })) || [],
-    staff: hospital.staff?.map((staffMember: any) => ({
+    staff: hospital.staff?.map((staffMember: StaffMember) => ({
       ...staffMember,
       hireDate: staffMember.hireDate?.toISOString() || null,
       lastPaidDate: staffMember.lastPaidDate?.toISOString() || null,
@@ -41,7 +98,7 @@ function transformHospitalDates(hospital: any) {
       createdAt: staffMember.createdAt?.toISOString() || null,
       updatedAt: staffMember.updatedAt?.toISOString() || null,
     })) || [],
-    resources: hospital.resources?.map((resource: any) => ({
+    resources: hospital.resources?.map((resource: Resource) => ({
       ...resource,
       lastMaintenance: resource.lastMaintenance?.toISOString() || null,
       nextMaintenance: resource.nextMaintenance?.toISOString() || null,
@@ -108,7 +165,7 @@ export default async function HospitalDepartmentsPage(props: HospitalDepartments
   }
 
   // Transform the hospital data to match the expected type
-  const transformedHospital = transformHospitalDates(hospital)
+  const transformedHospital = transformHospitalDates(hospital as HospitalData)
 
   return (
     <div className="space-y-6">
@@ -124,7 +181,7 @@ export default async function HospitalDepartmentsPage(props: HospitalDepartments
       <HospitalTabs hospitalId={hospital.id} activeTab="departments" />
       
       <HospitalDepartments 
-        hospital={transformedHospital} 
+        hospital={transformedHospital as never} 
         user={user}
       />
     </div>

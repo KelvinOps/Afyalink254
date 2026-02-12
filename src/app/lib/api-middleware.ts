@@ -1,14 +1,17 @@
 // /app/lib/api-middleware.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyToken } from './auth'
+import { verifyToken, UserToken } from './auth'
 import { hasPermission } from './permissions'
 
+// Use the existing UserToken type from auth module
+export type User = UserToken
+
 export interface AuthenticatedRequest extends NextRequest {
-  user?: any
+  user?: User
 }
 
 export async function authenticateRequest(request: NextRequest): Promise<{
-  user: any | null
+  user: User | null
   response: NextResponse | null
 }> {
   const authHeader = request.headers.get('authorization')
@@ -39,7 +42,7 @@ export async function authenticateRequest(request: NextRequest): Promise<{
   return { user, response: null }
 }
 
-export function requireRole(user: any, allowedRoles: string[]): NextResponse | null {
+export function requireRole(user: User, allowedRoles: string[]): NextResponse | null {
   if (!allowedRoles.includes(user.role)) {
     return NextResponse.json(
       { 
@@ -55,7 +58,7 @@ export function requireRole(user: any, allowedRoles: string[]): NextResponse | n
   return null
 }
 
-export function requirePermission(user: any, permission: string): NextResponse | null {
+export function requirePermission(user: User, permission: string): NextResponse | null {
   if (!hasPermission(user, permission)) {
     return NextResponse.json(
       { 

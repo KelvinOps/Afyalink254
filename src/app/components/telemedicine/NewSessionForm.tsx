@@ -107,12 +107,12 @@ export function NewSessionForm({ onSuccess }: NewSessionFormProps) {
 
     try {
       // In a real app, you would make an API call here
-      const sessionData = {
-        ...formData,
-        patientId: selectedPatient.id,
-        scheduledDate: date.toISOString(),
-        scheduledTime: format(new Date(), 'HH:mm'),
-      }
+      // const sessionData = {
+      //   ...formData,
+      //   patientId: selectedPatient.id,
+      //   scheduledDate: date.toISOString(),
+      //   scheduledTime: format(new Date(), 'HH:mm'),
+      // }
 
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000))

@@ -3,11 +3,39 @@ import { verifyToken, hasPermission, createUserObject } from '@/app/lib/auth'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { prisma } from '@/app/lib/prisma'
+import { Prisma } from '@prisma/client'
+
+// ── Inferred Prisma result types derived directly from the select shapes ──────
+// Using Prisma.validator keeps these in sync with the schema automatically —
+// if you ever add/remove a field from the select, the type updates too.
+
+const hospitalSelect = Prisma.validator<Prisma.HospitalSelect>()({
+  id: true, name: true, code: true
+})
+
+const departmentSelect = Prisma.validator<Prisma.DepartmentSelect>()({
+  id: true, name: true, type: true
+})
+
+const healthCenterSelect = Prisma.validator<Prisma.HealthCenterSelect>()({
+  id: true, name: true, code: true
+})
+
+const dispensarySelect = Prisma.validator<Prisma.DispensarySelect>()({
+  id: true, name: true, code: true
+})
+
+type HospitalItem     = Prisma.HospitalGetPayload<{ select: typeof hospitalSelect }>
+type DepartmentItem   = Prisma.DepartmentGetPayload<{ select: typeof departmentSelect }>
+type HealthCenterItem = Prisma.HealthCenterGetPayload<{ select: typeof healthCenterSelect }>
+type DispensaryItem   = Prisma.DispensaryGetPayload<{ select: typeof dispensarySelect }>
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function getSession() {
-  const cookieStore = await cookies() // Added await here
+  const cookieStore = await cookies()
   const token = cookieStore.get('token')?.value
-  
+
   if (!token) {
     return null
   }
@@ -18,7 +46,7 @@ async function getSession() {
 
 export default async function NewStaffPage() {
   const session = await getSession()
-  
+
   if (!session) {
     redirect('/login')
   }
@@ -29,88 +57,69 @@ export default async function NewStaffPage() {
   }
 
   // Fetch related data based on user's role and access level
-  let hospitals: any[] = []
-  let departments: any[] = []
-  let healthCenters: any[] = []
-  let dispensaries: any[] = []
+  let hospitals:     HospitalItem[]     = []
+  let departments:   DepartmentItem[]   = []
+  let healthCenters: HealthCenterItem[] = []
+  let dispensaries:  DispensaryItem[]   = []
 
   try {
     if (session.role === 'SUPER_ADMIN') {
       // SUPER_ADMIN can assign to any facility
-      [hospitals, departments, healthCenters, dispensaries] = await Promise.all([
+      ;[hospitals, departments, healthCenters, dispensaries] = await Promise.all([
         prisma.hospital.findMany({
           where: { isActive: true },
-          select: { id: true, name: true, code: true }
+          select: hospitalSelect
         }),
         prisma.department.findMany({
           where: { isActive: true },
-          select: { id: true, name: true, type: true }
+          select: departmentSelect
         }),
         prisma.healthCenter.findMany({
           where: { isActive: true },
-          select: { id: true, name: true, code: true }
+          select: healthCenterSelect
         }),
         prisma.dispensary.findMany({
           where: { isActive: true },
-          select: { id: true, name: true, code: true }
+          select: dispensarySelect
         })
       ])
     } else if (session.role === 'COUNTY_ADMIN' && session.countyId) {
       // COUNTY_ADMIN can only assign to facilities in their county
-      [hospitals, departments, healthCenters, dispensaries] = await Promise.all([
+      ;[hospitals, departments, healthCenters, dispensaries] = await Promise.all([
         prisma.hospital.findMany({
-          where: { 
-            isActive: true,
-            countyId: session.countyId
-          },
-          select: { id: true, name: true, code: true }
+          where: { isActive: true, countyId: session.countyId },
+          select: hospitalSelect
         }),
         prisma.department.findMany({
-          where: { 
+          where: {
             isActive: true,
-            hospital: {
-              countyId: session.countyId
-            }
+            hospital: { countyId: session.countyId }
           },
-          select: { id: true, name: true, type: true }
+          select: departmentSelect
         }),
         prisma.healthCenter.findMany({
-          where: { 
-            isActive: true,
-            countyId: session.countyId
-          },
-          select: { id: true, name: true, code: true }
+          where: { isActive: true, countyId: session.countyId },
+          select: healthCenterSelect
         }),
         prisma.dispensary.findMany({
-          where: { 
-            isActive: true,
-            countyId: session.countyId
-          },
-          select: { id: true, name: true, code: true }
+          where: { isActive: true, countyId: session.countyId },
+          select: dispensarySelect
         })
       ])
     } else if (session.role === 'HOSPITAL_ADMIN' && session.facilityId) {
       // HOSPITAL_ADMIN can only assign to their hospital and its departments
-      [hospitals, departments] = await Promise.all([
+      ;[hospitals, departments] = await Promise.all([
         prisma.hospital.findMany({
-          where: { 
-            id: session.facilityId,
-            isActive: true
-          },
-          select: { id: true, name: true, code: true }
+          where: { id: session.facilityId, isActive: true },
+          select: hospitalSelect
         }),
         prisma.department.findMany({
-          where: { 
-            hospitalId: session.facilityId,
-            isActive: true
-          },
-          select: { id: true, name: true, type: true }
+          where: { hospitalId: session.facilityId, isActive: true },
+          select: departmentSelect
         })
       ])
-      
-      // Initialize empty arrays for health centers and dispensaries
-      healthCenters = []
-      dispensaries = []
+
+      // healthCenters and dispensaries stay as empty arrays (already initialised above)
     }
   } catch (error) {
     console.error('Error fetching facility data:', error)
@@ -118,7 +127,7 @@ export default async function NewStaffPage() {
 
   return (
     <div className="container mx-auto py-6">
-      <StaffForm 
+      <StaffForm
         hospitals={hospitals}
         departments={departments}
         healthCenters={healthCenters}

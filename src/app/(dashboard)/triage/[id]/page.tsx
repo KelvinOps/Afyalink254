@@ -1,19 +1,13 @@
-//(dashboard)/triage/[id]]/page.tsx
-
-
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { useAuth } from '@/app/contexts/AuthContext'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams } from 'next/navigation'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Badge } from '@/app/components/ui/badge'
 import { 
   ArrowLeft,
   User,
-  Calendar,
-  Clock,
   Stethoscope,
   Heart,
   AlertTriangle,
@@ -68,20 +62,14 @@ interface TriageEntry {
 }
 
 export default function TriageDetailPage() {
-  const { user } = useAuth()
   const params = useParams()
-  const router = useRouter()
   const [triageEntry, setTriageEntry] = useState<TriageEntry | null>(null)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
 
   const triageId = params.id as string
 
-  useEffect(() => {
-    fetchTriageEntry()
-  }, [triageId])
-
-  const fetchTriageEntry = async () => {
+  const fetchTriageEntry = useCallback(async () => {
     try {
       setLoading(true)
       const response = await fetch(`/api/triage/${triageId}`)
@@ -97,7 +85,11 @@ export default function TriageDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [triageId])
+
+  useEffect(() => {
+    fetchTriageEntry()
+  }, [fetchTriageEntry])
 
   const updateStatus = async (newStatus: string) => {
     setUpdating(true)
@@ -131,7 +123,7 @@ export default function TriageDetailPage() {
       AWAITING_ADMISSION: { variant: 'secondary', label: 'Awaiting Admission' },
       DISCHARGED: { variant: 'outline', label: 'Discharged' }
     }
-    const config = statusConfig[status] || { variant: 'outline', label: status }
+    const config = statusConfig[status] || { variant: 'outline' as const, label: status }
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
@@ -142,7 +134,7 @@ export default function TriageDetailPage() {
       LESS_URGENT: { variant: 'secondary', label: 'Less Urgent' },
       NON_URGENT: { variant: 'outline', label: 'Non-Urgent' }
     }
-    const config = triageConfig[triageLevel] || { variant: 'outline', label: triageLevel }
+    const config = triageConfig[triageLevel] || { variant: 'outline' as const, label: triageLevel }
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
@@ -178,7 +170,7 @@ export default function TriageDetailPage() {
         <AlertTriangle className="mx-auto h-12 w-12 text-muted-foreground" />
         <h3 className="mt-4 text-lg font-semibold">Triage entry not found</h3>
         <p className="text-muted-foreground">
-          The triage entry you're looking for doesn't exist.
+          The triage entry you&apos;re looking for doesn&apos;t exist.
         </p>
         <Button asChild className="mt-4">
           <Link href="/triage">

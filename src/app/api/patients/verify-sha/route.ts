@@ -1,9 +1,11 @@
 // src/app/api/patients/verify-sha/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 // Mock SHA API service (replace with actual SHA API integration)
 class SHAApiService {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async verifyMember(shaNumber: string, nationalId?: string) {
     // In production, this would make actual API calls to SHA
     // For now, we'll simulate API responses based on database data
@@ -22,6 +24,7 @@ class SHAApiService {
     }
   }
   
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async getCoverageDetails(shaNumber: string) {
     return {
       benefits: {
@@ -61,12 +64,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Build search query with multiple criteria
-    const where: any = {
+    const where: Prisma.PatientWhereInput = {
       OR: []
     }
 
     if (shaNumber) {
-      where.OR.push({
+      where.OR!.push({
         shaNumber: { 
           contains: shaNumber, 
           mode: 'insensitive' 
@@ -75,7 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (nationalId) {
-      where.OR.push({
+      where.OR!.push({
         nationalId: { 
           contains: nationalId, 
           mode: 'insensitive' 
@@ -84,7 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (patientNumber) {
-      where.OR.push({
+      where.OR!.push({
         patientNumber: { 
           contains: patientNumber, 
           mode: 'insensitive' 
@@ -93,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (phone) {
-      where.OR.push(
+      where.OR!.push(
         {
           phone: { 
             contains: phone, 
@@ -230,7 +233,7 @@ export async function POST(request: NextRequest) {
       totalBilled: allClaims.reduce((sum, claim) => sum + claim.totalAmount, 0),
       totalApproved: paidClaims.reduce((sum, claim) => sum + (claim.shaApprovedAmount || 0), 0),
       totalPaid: paidClaims.reduce((sum, claim) => sum + (claim.patientPaidAmount || 0), 0),
-      totalOutstanding: allClaims.reduce((sum, claim) => sum + claim.outstandingBalance, 0), // Fixed: added missing 0
+      totalOutstanding: allClaims.reduce((sum, claim) => sum + claim.outstandingBalance, 0),
       utilizationRate: coverageDetails.limits.annualLimit > 0 
         ? (paidClaims.reduce((sum, claim) => sum + (claim.shaApprovedAmount || 0), 0) / coverageDetails.limits.annualLimit) * 100
         : 0

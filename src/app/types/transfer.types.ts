@@ -20,6 +20,31 @@ export type TransportMode =
   | 'INTER_FACILITY_TRANSPORT'
   | 'PUBLIC_TRANSPORT';
 
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
+  altitude?: number;
+  accuracy?: number;
+}
+
+export interface VitalSigns {
+  heartRate?: number;
+  bloodPressure?: {
+    systolic: number;
+    diastolic: number;
+  };
+  respiratoryRate?: number;
+  temperature?: number;
+  oxygenSaturation?: number;
+  glucoseLevel?: number;
+  consciousnessLevel?: string;
+  painScore?: number;
+  timestamp: string;
+  takenById?: string;
+  takenBy?: Staff;
+  notes?: string;
+}
+
 export interface Patient {
   id: string;
   patientNumber: string;
@@ -39,7 +64,7 @@ export interface Hospital {
   code: string;
   phone?: string;
   address?: string;
-  coordinates?: any;
+  coordinates?: Coordinates;
 }
 
 export interface Staff {
@@ -57,6 +82,17 @@ export interface Ambulance {
   driverPhone?: string;
 }
 
+export interface TriageEntry {
+  id: string;
+  triageNumber: string;
+  triageLevel: string;
+  vitalSigns: VitalSigns;
+  createdAt: string;
+  createdById: string;
+  createdBy?: Staff;
+  notes?: string;
+}
+
 export interface Transfer {
   id: string;
   transferNumber: string;
@@ -70,7 +106,7 @@ export interface Transfer {
   urgency: TransferUrgency;
   diagnosis: string;
   icd10Codes: string[];
-  vitalSigns?: any;
+  vitalSigns?: VitalSigns[];
   transportMode: TransportMode;
   requiredResources: string[];
   specialNeeds?: string;
@@ -99,10 +135,5 @@ export interface Transfer {
   receivingStaffName?: string;
   patientOutcome?: string;
   notes?: string;
-  triageEntry?: {
-    id: string;
-    triageNumber: string;
-    triageLevel: string;
-    vitalSigns: any;
-  };
+  triageEntry?: TriageEntry;
 }

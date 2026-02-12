@@ -17,7 +17,6 @@ import {
   User,
   Calendar,
   Phone,
-  PhoneOff,
   CheckCircle,
   XCircle,
 } from 'lucide-react'

@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from 'react'
 import { Badge } from '@/app/components/ui/badge'
-import { Video, VideoOff, Mic, MicOff } from 'lucide-react'
+import { Video, VideoOff, MicOff } from 'lucide-react'
 
 interface VideoCallInterfaceProps {
   localStream: MediaStream | null

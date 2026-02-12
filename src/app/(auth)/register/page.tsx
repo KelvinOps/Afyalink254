@@ -21,12 +21,19 @@ import {
   Ambulance,
   HeartPulse,
   Stethoscope,
-  Syringe,
   Pill,
-  Activity
+  Activity,
+  LucideIcon
 } from 'lucide-react'
 
-const ROLE_OPTIONS: { value: UserRole; label: string; description: string; icon: any }[] = [
+interface RoleOption {
+  value: UserRole
+  label: string
+  description: string
+  icon: LucideIcon
+}
+
+const ROLE_OPTIONS: RoleOption[] = [
   { 
     value: 'HOSPITAL_ADMIN', 
     label: 'Hospital Administrator', 

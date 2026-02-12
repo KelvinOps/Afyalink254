@@ -75,8 +75,8 @@ export default async function StaffDetailPage(props: PageProps) {
 
   return (
     <div className="container mx-auto py-6">
-      {/* Type assertion to handle the data structure mismatch */}
-      <StaffProfile staff={staff as any} />
+      {/* Use type assertion with unknown first to avoid any */}
+      <StaffProfile staff={staff as unknown as Parameters<typeof StaffProfile>[0]['staff']} />
     </div>
   )
 }

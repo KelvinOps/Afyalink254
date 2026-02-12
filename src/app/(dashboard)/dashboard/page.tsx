@@ -2,7 +2,6 @@
 'use client'
 
 import { useAuth } from '../../contexts/AuthContext'
-import { DashboardStats } from "../../components/dashboard/DashboardStats"
 import { QuickActions } from "../../components/dashboard/QuickActions"
 import { RecentActivity } from "../../components/dashboard/RecentActivity"
 import { AlertsBanner } from "../../components/dashboard/AlertsBanner"
@@ -12,22 +11,15 @@ import { BedCapacityWidget } from "../../components/dashboard/BedCapacityWidget"
 import { EmergencyStatus } from "../../components/dashboard/EmergencyStatus"
 import { Badge } from "../../components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
-import { Button } from "../../components/ui/button"
 import { 
   Activity, 
-  AlertTriangle, 
   Ambulance, 
-  Calendar,
   Clock,
-  Download,
-  Eye,
   FileText,
-  Heart,
   Hospital,
   MapPin,
   MessageSquare,
   Phone,
-  Plus,
   Shield,
   TrendingUp,
   Users,
@@ -35,7 +27,6 @@ import {
   ArrowUp,
   ArrowDown
 } from 'lucide-react'
-import { useEffect } from 'react'
 
 export default function DashboardPage() {
   const { user, hasPermission, isInitialized } = useAuth()

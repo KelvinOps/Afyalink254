@@ -15,8 +15,6 @@ const COUNTIES = [
 
 const HOSPITAL_LEVELS = ['LEVEL_6', 'LEVEL_5', 'LEVEL_4', 'LEVEL_3']
 
-const HOSPITAL_TYPES = ['PUBLIC', 'PRIVATE', 'MISSION', 'NGO']
-
 const STATUS_OPTIONS = ['OPERATIONAL', 'LIMITED_CAPACITY', 'OVERWHELMED', 'CLOSED']
 
 export function HospitalFilters() {

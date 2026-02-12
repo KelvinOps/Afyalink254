@@ -18,6 +18,22 @@ interface ApiResponse<T> {
   message?: string
 }
 
+// Define type for resource specifications
+interface ResourceSpecifications {
+  [key: string]: string | number | boolean | null
+}
+
+// Define type for alert data
+interface AlertData {
+  id: string
+  type: string
+  title: string
+  message: string
+  severity: string
+  resourceId?: string
+  createdAt: string
+}
+
 export class ResourceService {
   private baseUrl: string
 
@@ -151,7 +167,7 @@ export class ResourceService {
     batchNumber?: string
     unitCost?: number
     totalValue?: number
-    specifications?: any
+    specifications?: ResourceSpecifications
     notes?: string
   }): Promise<Resource> {
     const response = await this.fetchApi<Resource>('/resources', {
@@ -196,7 +212,7 @@ export class ResourceService {
       batchNumber?: string
       unitCost?: number
       totalValue?: number
-      specifications?: any
+      specifications?: ResourceSpecifications
       notes?: string
     }>
   ): Promise<Resource> {
@@ -330,8 +346,8 @@ export class ResourceService {
     resourceId: string,
     action: string,
     notes?: string
-  ): Promise<{ message: string; alert: any }> {
-    const response = await this.fetchApi<{ message: string; alert: any }>(
+  ): Promise<{ message: string; alert: AlertData }> {
+    const response = await this.fetchApi<{ message: string; alert: AlertData }>(
       '/resources/critical-shortages',
       {
         method: 'POST',
@@ -631,24 +647,8 @@ export class ResourceService {
   /**
    * Get unread resource alerts
    */
-  async getUnreadAlerts(): Promise<Array<{
-    id: string
-    type: string
-    title: string
-    message: string
-    severity: string
-    resourceId?: string
-    createdAt: string
-  }>> {
-    const response = await this.fetchApi<Array<{
-      id: string
-      type: string
-      title: string
-      message: string
-      severity: string
-      resourceId?: string
-      createdAt: string
-    }>>('/resources/alerts/unread')
+  async getUnreadAlerts(): Promise<AlertData[]> {
+    const response = await this.fetchApi<AlertData[]>('/resources/alerts/unread')
     return response.data
   }
 
@@ -676,4 +676,6 @@ export type {
   BedAvailability,
   CriticalShortage,
   ResourceStats,
+  ResourceSpecifications,
+  AlertData,
 }

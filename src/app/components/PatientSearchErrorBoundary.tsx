@@ -1,7 +1,7 @@
 // src/app/components/PatientSearchErrorBoundary.tsx
 'use client'
 
-import { Component, ReactNode } from 'react'
+import { Component, ReactNode, ErrorInfo } from 'react'
 
 interface Props {
   children: ReactNode
@@ -21,7 +21,7 @@ export class PatientSearchErrorBoundary extends Component<Props, State> {
     return { hasError: true, error }
   }
 
-  public componentDidCatch(error: Error, errorInfo: any) {
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Patient search error:', error, errorInfo)
   }
 

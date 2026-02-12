@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { 
   getTelemedicineSession,
   updateTelemedicineSession,
-  deleteTelemedicineSession
+  // Remove the unused deleteTelemedicineSession import
 } from '@/app/services/telemedicine.service'
 import { auditLog } from '@/app/lib/audit'
 import { getCurrentUser } from '@/app/lib/get-current-user'
@@ -23,6 +23,7 @@ const updateSessionSchema = z.object({
   videoQuality: z.number().min(1).max(5).optional(),
   imagesShared: z.array(z.string()).optional(),
   documentsShared: z.array(z.string()).optional(),
+  cancellationReason: z.string().optional(),
 })
 
 interface RouteParams {

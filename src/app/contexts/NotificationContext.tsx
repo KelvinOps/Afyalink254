@@ -3,14 +3,11 @@
 
 import React, { createContext, useContext, useReducer, useEffect } from 'react'
 import { 
-  Bell, 
   AlertTriangle, 
   CheckCircle, 
   XCircle, 
   Info,
-  X,
-  Volume2,
-  VolumeX
+  X
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
@@ -69,15 +66,6 @@ const initialState: NotificationState = {
   unreadCount: 0,
   soundEnabled: true,
   emergencyMode: false
-}
-
-// Sound effects for different notification types
-const notificationSounds: Record<NotificationType, string> = {
-  info: '/sounds/notification-info.mp3',
-  success: '/sounds/notification-success.mp3',
-  warning: '/sounds/notification-warning.mp3',
-  error: '/sounds/notification-error.mp3',
-  emergency: '/sounds/notification-emergency.mp3'
 }
 
 // Reducer function
@@ -166,7 +154,13 @@ function playNotificationSound(type: NotificationType) {
   // In a real app, you would play actual sound files
   // For now, we'll use the Web Audio API to generate simple tones
   try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioContextClass) {
+      console.warn('AudioContext not supported')
+      return
+    }
+    
+    const audioContext = new AudioContextClass()
     const oscillator = audioContext.createOscillator()
     const gainNode = audioContext.createGain()
 
@@ -422,8 +416,23 @@ export function useNotification() {
   return context
 }
 
+// Helper component types
+interface BadgeProps {
+  variant?: 'default' | 'outline'
+  className?: string
+  children: React.ReactNode
+}
+
+interface ButtonProps {
+  variant?: 'default' | 'outline'
+  size?: 'default' | 'sm'
+  className?: string
+  onClick?: () => void
+  children: React.ReactNode
+}
+
 // Helper components (you might need to create these or use from your UI library)
-const Badge = ({ variant = 'default', className, children }: any) => (
+const Badge = ({ variant = 'default', className, children }: BadgeProps) => (
   <span className={cn(
     'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium',
     variant === 'outline' && 'border border-gray-300 text-gray-700',
@@ -433,7 +442,7 @@ const Badge = ({ variant = 'default', className, children }: any) => (
   </span>
 )
 
-const Button = ({ variant = 'default', size = 'default', className, onClick, children }: any) => (
+const Button = ({ variant = 'default', size = 'default', className, onClick, children }: ButtonProps) => (
   <button
     onClick={onClick}
     className={cn(

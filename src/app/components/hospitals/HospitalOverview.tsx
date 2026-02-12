@@ -4,9 +4,8 @@
 import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Badge } from '@/app/components/ui/badge'
-import { Button } from '@/app/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs'
-import { MapPin, Phone, Mail, Users, Activity, Building, Shield, AlertTriangle } from 'lucide-react'
+import { MapPin, Phone, Mail, Users, Building, Shield, AlertTriangle } from 'lucide-react'
 import type { Hospital } from '@/app/lib/types'
 
 // Define User type locally since it's not exported from your types
@@ -26,7 +25,7 @@ interface HospitalOverviewProps {
   showDetailedView?: boolean
 }
 
-export function HospitalOverview({ hospital, user, showDetailedView = true }: HospitalOverviewProps) {
+export function HospitalOverview({ hospital, showDetailedView = true }: HospitalOverviewProps) {
   const [activeTab, setActiveTab] = useState('details')
 
   // Helper function to convert Date to string if needed
@@ -35,7 +34,7 @@ export function HospitalOverview({ hospital, user, showDetailedView = true }: Ho
       ...hospital,
       lastBedUpdate: typeof hospital.lastBedUpdate === 'string' 
         ? hospital.lastBedUpdate 
-        : (hospital.lastBedUpdate as any)?.toISOString?.() || new Date().toISOString()
+        : (hospital.lastBedUpdate as Date)?.toISOString?.() || new Date().toISOString()
     }
   }
 

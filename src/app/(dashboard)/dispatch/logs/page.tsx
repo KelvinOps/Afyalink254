@@ -39,9 +39,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/app/components/ui/dialog'
-import { Textarea } from '@/app/components/ui/textarea'
 import {
   FileText,
   Search,

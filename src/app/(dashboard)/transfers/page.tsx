@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import {
@@ -117,13 +117,12 @@ export default function TransfersPage() {
     pages: 0,
   });
 
-  useEffect(() => {
-    if (status === 'authenticated') {
-      fetchTransfers();
-    }
-  }, [status, pagination.page, statusFilter]);
-
-  const fetchTransfers = async () => {
+  // Wrapped in useCallback so the reference is stable between renders.
+  // All values closed over by this function are listed as deps:
+  //   - pagination.page / pagination.limit  → change triggers a re-fetch
+  //   - statusFilter                        → change triggers a re-fetch
+  //   - searchTerm                          → change triggers a re-fetch
+  const fetchTransfers = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -144,41 +143,51 @@ export default function TransfersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination.page, pagination.limit, statusFilter, searchTerm]);
+
+  // fetchTransfers is now stable and only recreated when one of its deps
+  // changes, so listing it here satisfies exhaustive-deps without causing
+  // infinite re-fetch loops.
+  useEffect(() => {
+    if (status === 'authenticated') {
+      fetchTransfers();
+    }
+  }, [status, fetchTransfers]);
 
   // Fixed badge variants - only use supported ones
-  const getStatusBadge = (status: string) => {
-    const statusConfig: Record<string, { variant: "default" | "destructive" | "outline" | "secondary"; label: string }> = {
-      REQUESTED: { variant: 'secondary', label: 'Requested' },
-      APPROVED: { variant: 'default', label: 'Approved' },
-      REJECTED: { variant: 'destructive', label: 'Rejected' },
-      IN_TRANSIT: { variant: 'secondary', label: 'In Transit' }, // Changed from 'warning'
-      COMPLETED: { variant: 'default', label: 'Completed' }, // Changed from 'success'
-      CANCELLED: { variant: 'outline', label: 'Cancelled' },
+  const getStatusBadge = (transferStatus: string) => {
+    const statusConfig: Record<string, { variant: 'default' | 'destructive' | 'outline' | 'secondary'; label: string }> = {
+      REQUESTED:  { variant: 'secondary',   label: 'Requested'  },
+      APPROVED:   { variant: 'default',     label: 'Approved'   },
+      REJECTED:   { variant: 'destructive', label: 'Rejected'   },
+      IN_TRANSIT: { variant: 'secondary',   label: 'In Transit' },
+      COMPLETED:  { variant: 'default',     label: 'Completed'  },
+      CANCELLED:  { variant: 'outline',     label: 'Cancelled'  },
     };
 
-    const config = statusConfig[status] || { variant: 'secondary', label: status };
+    const config = statusConfig[transferStatus] ?? { variant: 'secondary' as const, label: transferStatus };
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
   const getUrgencyBadge = (urgency: string) => {
-    const urgencyConfig: Record<string, { variant: "default" | "destructive" | "outline" | "secondary"; label: string }> = {
+    const urgencyConfig: Record<string, { variant: 'default' | 'destructive' | 'outline' | 'secondary'; label: string }> = {
       IMMEDIATE: { variant: 'destructive', label: 'Immediate' },
-      URGENT: { variant: 'default', label: 'Urgent' }, // Changed from 'warning'
-      SCHEDULED: { variant: 'default', label: 'Scheduled' },
-      ROUTINE: { variant: 'secondary', label: 'Routine' },
+      URGENT:    { variant: 'default',     label: 'Urgent'    },
+      SCHEDULED: { variant: 'default',     label: 'Scheduled' },
+      ROUTINE:   { variant: 'secondary',   label: 'Routine'   },
     };
 
-    const config = urgencyConfig[urgency] || { variant: 'secondary', label: urgency };
+    const config = urgencyConfig[urgency] ?? { variant: 'secondary' as const, label: urgency };
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
   // Safe permission check
-  const canWriteTransfers = session?.user?.permissions?.includes('transfers.write') || 
-                           session?.user?.permissions?.includes('*') ||
-                           session?.user?.role === 'SUPER_ADMIN' ||
-                           session?.user?.role === 'HOSPITAL_ADMIN' ||
-                           session?.user?.role === 'DOCTOR';
+  const canWriteTransfers =
+    session?.user?.permissions?.includes('transfers.write') ||
+    session?.user?.permissions?.includes('*') ||
+    session?.user?.role === 'SUPER_ADMIN' ||
+    session?.user?.role === 'HOSPITAL_ADMIN' ||
+    session?.user?.role === 'DOCTOR';
 
   if (status === 'loading' || loading) {
     return (

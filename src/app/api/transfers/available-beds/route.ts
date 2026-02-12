@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { prisma } from '@/app/lib/prisma';
 import { authOptions } from '@/app/lib/auth-options';
 import { createUserObject } from '@/app/lib/auth';
+import { ResourceType } from '@prisma/client';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +19,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const hospitalId = searchParams.get('hospitalId');
     const department = searchParams.get('department');
-    const resourceType = searchParams.get('resourceType') || 'BED';
+    const resourceTypeParam = searchParams.get('resourceType') || 'BED';
+    
+    // Validate that the resource type is valid
+    const validResourceTypes = Object.values(ResourceType);
+    const resourceType = validResourceTypes.includes(resourceTypeParam as ResourceType) 
+      ? (resourceTypeParam as ResourceType) 
+      : ResourceType.BED;
 
     if (!hospitalId) {
       return NextResponse.json({ error: 'Hospital ID is required' }, { status: 400 });
@@ -50,7 +57,7 @@ export async function GET(request: NextRequest) {
       prisma.resource.findMany({
         where: {
           hospitalId,
-          type: resourceType as any,
+          type: resourceType,
           status: 'AVAILABLE',
           ...(department && { departmentId: department }),
         },

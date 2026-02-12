@@ -6,7 +6,7 @@ import { Button } from '@/app/components/ui/button'
 import { Badge } from '@/app/components/ui/badge'
 import { ScrollArea } from '@/app/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/app/components/ui/table'
-import { Plus, FileText, Pill, Calendar, User, AlertTriangle } from 'lucide-react'
+import { Plus, FileText, Pill, AlertTriangle } from 'lucide-react'
 import { NewPrescriptionForm } from './NewPrescriptionForm'
 import { useToast } from '@/app/hooks/use-toast'
 
@@ -72,9 +72,18 @@ interface TelemedicineSession {
   prescriptions?: Prescription[]
 }
 
+interface CurrentUser {
+  id: string
+  role: 'DOCTOR' | 'SUPER_ADMIN' | 'HOSPITAL_ADMIN' | 'NURSE' | 'PHARMACIST' | string
+  firstName?: string
+  lastName?: string
+  email?: string
+  facilityId?: string
+}
+
 interface SessionPrescriptionsProps {
   session: TelemedicineSession
-  currentUser: any
+  currentUser: CurrentUser
 }
 
 export function SessionPrescriptions({ session, currentUser }: SessionPrescriptionsProps) {

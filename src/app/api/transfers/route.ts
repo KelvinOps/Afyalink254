@@ -5,6 +5,7 @@ import { prisma } from '@/app/lib/prisma';
 import { authOptions } from '@/app/lib/auth-options';
 import { auditLog } from '@/app/lib/audit';
 import { createUserObject, hasPermission } from '@/app/lib/auth';
+import { Prisma } from '@prisma/client';
 
 // Updated validation schema with all required fields from Prisma schema
 const createTransferSchema = z.object({
@@ -41,17 +42,16 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const status = searchParams.get('status');
-    const hospitalId = searchParams.get('hospitalId');
     const patientId = searchParams.get('patientId');
     const direction = searchParams.get('direction');
 
     const skip = (page - 1) * limit;
 
-    // Build where clause based on user role and filters
-    let where: any = {};
+    // Build where clause based on user role and filters - Fixed: changed to const and proper typing
+    const where: Prisma.TransferWhereInput = {};
 
     if (status && status !== 'all') {
-      where.status = status;
+      where.status = status as Prisma.TransferWhereInput['status'];
     }
 
     if (patientId) {
@@ -224,7 +224,8 @@ export async function POST(request: NextRequest) {
       data: {
         transferNumber,
         patientId: data.patientId,
-        triageEntryId: patient.triageEntries[0]?.id || null,
+        // Note: triageEntry relation is managed from TriageEntry side (has transferId field)
+        // If you need to link to a triage entry, update the TriageEntry after creating the transfer
         
         // Origin information
         originHospitalId: data.originHospitalId,
@@ -261,7 +262,6 @@ export async function POST(request: NextRequest) {
         // Transport
         transportMode: data.transportMode,
         ambulanceId: null,
-        escortingStaff: null,
         transferDocuments: [],
         
         // Distance & route
@@ -334,6 +334,14 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    // Link the triage entry to this transfer if one exists
+    if (patient.triageEntries[0]?.id) {
+      await prisma.triageEntry.update({
+        where: { id: patient.triageEntries[0].id },
+        data: { transferId: transfer.id }
+      });
+    }
+
     // Create audit log
     await auditLog({
       action: 'CREATE',
@@ -342,7 +350,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       userRole: user.role,
       userName: user.name,
-      description: `Created transfer request ${transferNumber} for patient ${transfer.patient.firstName} ${transfer.patient.lastName}`,
+      description: `Created transfer request ${transferNumber} for patient ${patient.firstName} ${patient.lastName}`,
       changes: data,
       facilityId: user.facilityId,
       success: true

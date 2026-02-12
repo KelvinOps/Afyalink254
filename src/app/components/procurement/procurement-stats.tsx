@@ -1,7 +1,7 @@
 'use client'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
-import { Package, ShoppingCart, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
+import { Card, CardContent } from '@/app/components/ui/card'
+import { Package, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
 
 export function ProcurementStats() {
   const stats = [

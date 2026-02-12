@@ -5,11 +5,12 @@ import { prisma } from '@/app/lib/prisma'
 import { verifyToken } from '@/app/lib/auth'
 import { auditLog } from '@/app/lib/audit'
 
-interface RouteParams {
-  params: {
-    id: string
-  }
-}
+// Remove unused interface
+// interface RouteParams {
+//   params: {
+//     id: string
+//   }
+// }
 
 export async function GET(
   request: NextRequest,
@@ -154,7 +155,7 @@ export async function POST(
       entityId: newRecord.id,
       userId: user.id,
       userRole: user.role,
-      userName: user.name,
+      userName: user.name || user.email || 'Unknown',
       description: `Added maintenance record for ambulance ${ambulance.registrationNumber}`,
       details: { type, cost, performedBy }
     })

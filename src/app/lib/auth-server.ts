@@ -6,14 +6,23 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { 
   User, 
-  UserRole, 
+  // Removed unused UserRole import
   createUserObject, 
   ensureBasicPermissions,
   JWT_SECRET 
 } from './auth'
 
+// Define a proper JWT payload interface
+interface JWTPayload {
+  id: string
+  email: string
+  role: string
+  permissions?: string[]
+  [key: string]: unknown // For other properties
+}
+
 // Server-only function to sign tokens
-export async function signToken(payload: any): Promise<string> {
+export async function signToken(payload: JWTPayload): Promise<string> {
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime('7d')
@@ -22,12 +31,12 @@ export async function signToken(payload: any): Promise<string> {
 }
 
 // Server-only function to verify tokens
-export async function verifyToken(token: string): Promise<any> {
+export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
     // Remove 'Bearer ' prefix if present
     const cleanToken = token.replace('Bearer ', '')
     const { payload } = await jwtVerify(cleanToken, JWT_SECRET)
-    return payload
+    return payload as JWTPayload
   } catch {
     return null
   }

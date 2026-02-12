@@ -1,7 +1,7 @@
-// src/app/dispatch/calls/page.tsx
+// src/app/(dashboard)/dispatch/calls/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/app/contexts/AuthContext'
 import { useNotification } from '@/app/contexts/NotificationContext'
 
@@ -45,16 +45,8 @@ export default function DispatchCallsPage() {
     patientCount: 1
   })
 
-  useEffect(() => {
-    fetchDispatchData()
-    
-    // Set up polling for real-time updates
-    const interval = setInterval(fetchDispatchData, 30000) // Update every 30 seconds
-    
-    return () => clearInterval(interval)
-  }, [viewMode])
-
-  const fetchDispatchData = async () => {
+  // Memoize fetchDispatchData with useCallback
+  const fetchDispatchData = useCallback(async () => {
     try {
       const params = viewMode === 'historical' 
         ? '?logs=true&limit=50' 
@@ -90,7 +82,16 @@ export default function DispatchCallsPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [viewMode, addNotification])
+
+  useEffect(() => {
+    fetchDispatchData()
+    
+    // Set up polling for real-time updates
+    const interval = setInterval(fetchDispatchData, 30000) // Update every 30 seconds
+    
+    return () => clearInterval(interval)
+  }, [fetchDispatchData])
 
   const handleCreateCall = async (e: React.FormEvent) => {
     e.preventDefault()

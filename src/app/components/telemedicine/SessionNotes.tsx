@@ -7,8 +7,7 @@ import { Textarea } from '@/app/components/ui/textarea'
 import { Label } from '@/app/components/ui/label'
 import { Badge } from '@/app/components/ui/badge'
 import { ScrollArea } from '@/app/components/ui/scroll-area'
-import { FileText, Edit, Save, X, User, Calendar } from 'lucide-react'
-import { updateTelemedicineSession } from '@/app/services/telemedicine.service'
+import { FileText, User, Calendar } from 'lucide-react'
 import { useToast } from '@/app/hooks/use-toast'
 
 interface ClinicalNote {
@@ -34,14 +33,23 @@ interface TelemedicineSession {
   }
 }
 
+interface CurrentUser {
+  id: string
+  name: string
+  role: 'DOCTOR' | 'SUPER_ADMIN' | 'HOSPITAL_ADMIN' | 'NURSE' | 'PHARMACIST' | string
+  firstName?: string
+  lastName?: string
+  email?: string
+  facilityId?: string
+}
+
 interface SessionNotesProps {
   session: TelemedicineSession
-  currentUser: any
+  currentUser: CurrentUser
 }
 
 export function SessionNotes({ session, currentUser }: SessionNotesProps) {
   const { toast } = useToast()
-  const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [newNote, setNewNote] = useState('')
   const [notes, setNotes] = useState<ClinicalNote[]>(session.clinicalNotes || [])

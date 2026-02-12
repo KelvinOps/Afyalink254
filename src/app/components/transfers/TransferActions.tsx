@@ -11,9 +11,24 @@ import {
 import { Button } from '@/app/components/ui/button';
 import { Transfer } from '@/app/types/transfer.types';
 
+// Define the session type structure
+interface SessionUser {
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+  id?: string;
+  role?: string;
+  facilityId?: string;
+}
+
+interface Session {
+  user: SessionUser;
+  expires: string;
+}
+
 interface TransferActionsProps {
   transfer: Transfer;
-  session: any;
+  session: Session | null;
   onUpdate: () => void;
   action?: string | null;
 }

@@ -3,6 +3,25 @@ export type AmbulanceType = 'BLS' | 'ALS' | 'CRITICAL_CARE' | 'AIR_AMBULANCE' | 
 export type EquipmentLevel = 'BASIC' | 'INTERMEDIATE' | 'ADVANCED' | 'CRITICAL_CARE'
 export type AmbulanceStatus = 'AVAILABLE' | 'DISPATCHED' | 'ON_SCENE' | 'TRANSPORTING' | 'AT_HOSPITAL' | 'RETURNING' | 'UNAVAILABLE' | 'MAINTENANCE' | 'OUT_OF_SERVICE'
 
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
+  altitude?: number;
+  accuracy?: number;
+  timestamp?: string;
+}
+
+export interface BaseStation {
+  name: string;
+  address?: string;
+  coordinates: Coordinates;
+  contactPerson?: string;
+  contactPhone?: string;
+  is24Hours?: boolean;
+  facilities?: string[];
+  notes?: string;
+}
+
 export interface Ambulance {
   id: string
   registrationNumber: string
@@ -28,8 +47,8 @@ export interface Ambulance {
   
   // Status & Location
   status: AmbulanceStatus
-  currentLocation?: LocationData
-  lastKnownLocation?: LocationData
+  currentLocation?: Coordinates
+  lastKnownLocation?: Coordinates
   
   // Tracking
   lastServiceDate?: string
@@ -57,7 +76,7 @@ export interface CountyAmbulance {
   registrationNumber: string
   countyId: string
   baseStation: string
-  baseCoordinates?: any
+  baseCoordinates?: Coordinates
   
   type: AmbulanceType
   equipmentLevel: EquipmentLevel
@@ -75,8 +94,8 @@ export interface CountyAmbulance {
   
   // Status
   status: AmbulanceStatus
-  currentLocation?: LocationData
-  lastKnownLocation?: LocationData
+  currentLocation?: Coordinates
+  lastKnownLocation?: Coordinates
   
   // Maintenance
   lastServiceDate?: string
@@ -90,11 +109,4 @@ export interface CountyAmbulance {
   county?: {
     name: string
   }
-}
-
-interface LocationData {
-  lat: number
-  lng: number
-  accuracy?: number
-  timestamp?: string
 }

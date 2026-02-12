@@ -8,7 +8,6 @@ import { useAuth } from '@/app/contexts/AuthContext'
 import { 
   Ambulance, 
   Shield, 
-  User, 
   Stethoscope, 
   Building, 
   MapPin,
@@ -18,8 +17,7 @@ import {
   Lock,
   Mail,
   ClipboardList,
-  Activity,
-  BriefcaseMedical
+  Activity
 } from 'lucide-react'
 
 // Move demo users outside component to prevent recreation

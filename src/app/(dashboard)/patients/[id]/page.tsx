@@ -1,8 +1,8 @@
 // src/app/(dashboard)/patients/[id]/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams } from 'next/navigation'
 import { useAuth } from '@/app/contexts/AuthContext'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
@@ -15,14 +15,11 @@ import {
   MapPin,
   Shield,
   AlertTriangle,
-  Calendar,
-  FileText,
   Ambulance,
   Activity,
   Edit,
   Download,
   RefreshCw,
-  Heart,
   Stethoscope,
   Pill,
   TestTube,
@@ -233,9 +230,8 @@ interface MedicalHistoryData {
 }
 
 export default function PatientDetailPage() {
-  const { user, hasPermission } = useAuth()
+  const { hasPermission } = useAuth()
   const params = useParams()
-  const router = useRouter()
   const [patient, setPatient] = useState<Patient | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -244,7 +240,7 @@ export default function PatientDetailPage() {
 
   const patientId = params.id as string
 
-  const fetchPatient = async () => {
+  const fetchPatient = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -263,7 +259,7 @@ export default function PatientDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [patientId])
 
   // Add this function to fetch medical history
   const fetchMedicalHistory = async () => {
@@ -296,7 +292,7 @@ export default function PatientDetailPage() {
       setError('Patient ID is required')
       setLoading(false)
     }
-  }, [patientId])
+  }, [patientId, fetchPatient])
 
   const calculateAge = (dateOfBirth: string) => {
     const birthDate = new Date(dateOfBirth)

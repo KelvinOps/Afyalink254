@@ -4,12 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { verifyToken } from '@/app/lib/auth'
 import { auditLog } from '@/app/lib/audit'
-
-interface RouteParams {
-  params: {
-    id: string
-  }
-}
+import { AmbulanceStatus } from '@prisma/client'
 
 export async function GET(
   request: NextRequest,
@@ -60,7 +55,6 @@ export async function GET(
 
     // Fetch related data separately
     let dispatcher = null
-    let hospital = null
     let nearestHospital = null
     let destinationHospital = null
 
@@ -124,6 +118,51 @@ export async function GET(
   }
 }
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
+/** All scalar values that can appear in a Prisma dispatchLog update payload */
+type DispatchUpdateValue =
+  | string
+  | number
+  | Date
+  | null
+  | undefined
+
+/** Strongly-typed shape for the mutable update accumulator */
+interface DispatchUpdateData {
+  status?: string
+  ambulanceId?: string
+  countyAmbulanceId?: string
+  destinationHospitalId?: string
+  instructionsGiven?: string
+  outcome?: string
+  notes?: string
+  responseTime?: number
+  transportTime?: number
+  updatedAt?: Date
+  // timeline timestamps
+  dispatched?: Date
+  arrivedOnScene?: Date
+  departedScene?: Date
+  arrivedHospital?: Date
+  cleared?: Date
+}
+
+/**
+ * Safely casts a DispatchUpdateValue to an AmbulanceStatus enum member.
+ * Returns undefined if the value is not a valid AmbulanceStatus key,
+ * preventing a runtime Prisma error from a bad enum value.
+ */
+function toAmbulanceStatus(value: DispatchUpdateValue): AmbulanceStatus | undefined {
+  if (typeof value !== 'string') return undefined
+  if (Object.values(AmbulanceStatus).includes(value as AmbulanceStatus)) {
+    return value as AmbulanceStatus
+  }
+  return undefined
+}
+
+// ── PATCH ────────────────────────────────────────────────────────────────────
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -145,7 +184,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
 
-    const body = await request.json()
+    const body = await request.json() as Record<string, DispatchUpdateValue>
     const { 
       status, 
       ambulanceId, 
@@ -165,11 +204,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'Dispatch not found' }, { status: 404 })
     }
 
-    const updateData: any = {}
-    const timelineUpdates: any = {}
+    // Build update data object - only include fields that are actually being updated
+    const updateData: DispatchUpdateData = {}
+    const timelineUpdates: Partial<DispatchUpdateData> = {}
 
     // Update status with timeline tracking
-    if (status) {
+    if (typeof status === 'string') {
       updateData.status = status
       
       // Set timeline dates based on status
@@ -195,15 +235,16 @@ export async function PATCH(
       }
     }
 
-    if (ambulanceId) updateData.ambulanceId = ambulanceId
-    if (countyAmbulanceId) updateData.countyAmbulanceId = countyAmbulanceId
+    // Only add fields if they are provided
+    if (ambulanceId !== undefined) updateData.ambulanceId = ambulanceId as string
+    if (countyAmbulanceId !== undefined) updateData.countyAmbulanceId = countyAmbulanceId as string
     
     // Handle hospitalId - assuming it's for destinationHospitalId
-    if (hospitalId) updateData.destinationHospitalId = hospitalId
+    if (hospitalId !== undefined) updateData.destinationHospitalId = hospitalId as string
     
-    if (instructions) updateData.instructionsGiven = instructions
-    if (outcome) updateData.outcome = outcome
-    if (notes) updateData.notes = notes
+    if (instructions !== undefined) updateData.instructionsGiven = instructions as string
+    if (outcome !== undefined) updateData.outcome = outcome as string
+    if (notes !== undefined) updateData.notes = notes as string
 
     // Calculate response times if we have timeline data
     if (timelineUpdates.arrivedOnScene && currentDispatch.dispatched) {
@@ -238,50 +279,42 @@ export async function PATCH(
       }
     })
 
-    // Update ambulance status if assigned
-    if (ambulanceId && status) {
+    // Update ambulance status if assigned and status is a valid AmbulanceStatus enum value
+    const ambulanceStatus = toAmbulanceStatus(status)
+    if (ambulanceId && ambulanceStatus) {
       await prisma.ambulance.update({
-        where: { id: ambulanceId },
-        data: { status }
+        where: { id: ambulanceId as string },
+        data: { status: ambulanceStatus }
       })
     }
 
-    // Update county ambulance status if assigned
-    if (countyAmbulanceId && status) {
+    // Update county ambulance status if assigned and status is a valid AmbulanceStatus enum value
+    if (countyAmbulanceId && ambulanceStatus) {
       await prisma.countyAmbulance.update({
-        where: { id: countyAmbulanceId },
-        data: { status }
+        where: { id: countyAmbulanceId as string },
+        data: { status: ambulanceStatus }
       })
     }
 
-    // Log the action - remove the details field if auditLog doesn't accept it
-    const auditData: any = {
+    // Log the action
+    await auditLog({
       action: 'UPDATE',
       entityType: 'DISPATCH',
       entityId: params.id,
       userId: user.id,
       userRole: user.role,
-      // Use firstName + lastName since your Staff model doesn't have a name field
       userName: user.firstName && user.lastName ? 
         `${user.firstName} ${user.lastName}` : 
         user.name || user.email || 'Unknown',
       description: `Updated dispatch ${dispatch.dispatchNumber} to ${status}`,
-    }
-
-    // Only add details if the auditLog function accepts it
-    // Check your auditLog function signature to see if it has a details parameter
-    // For now, we'll use changes field instead if details doesn't exist
-    const changes = {
-      status: status || null,
-      ambulanceId: ambulanceId || null,
-      countyAmbulanceId: countyAmbulanceId || null,
-      destinationHospitalId: hospitalId || null,
-      outcome: outcome || null
-    }
-    
-    auditData.changes = changes
-
-    await auditLog(auditData)
+      changes: {
+        status: status ?? null,
+        ambulanceId: ambulanceId ?? null,
+        countyAmbulanceId: countyAmbulanceId ?? null,
+        destinationHospitalId: hospitalId ?? null,
+        outcome: outcome ?? null
+      }
+    })
 
     return NextResponse.json({ 
       success: true,

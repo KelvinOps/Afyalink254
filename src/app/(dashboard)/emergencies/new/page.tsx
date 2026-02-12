@@ -10,17 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/app/components/ui/alert';
 import { AlertTriangle, ArrowLeft, MapPin } from 'lucide-react';
 
-interface County {
-  id: string;
-  name: string;
-  code: string;
-}
 
 export default function NewEmergencyPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [counties, setCounties] = useState<County[]>([]);
+  // Remove the unused counties state since we're using static data
   const [formData, setFormData] = useState({
     type: '',
     severity: '',
@@ -112,6 +107,57 @@ export default function NewEmergencyPage() {
 
   const severityLevels = ['MINOR', 'MODERATE', 'SEVERE', 'MAJOR', 'CATASTROPHIC'];
 
+  // Static county data for Kenya's 47 counties
+  const kenyanCounties = [
+    { id: 'county-1', name: 'Nairobi County', code: '001' },
+    { id: 'county-2', name: 'Mombasa County', code: '002' },
+    { id: 'county-3', name: 'Kisumu County', code: '003' },
+    { id: 'county-4', name: 'Kiambu County', code: '004' },
+    { id: 'county-5', name: 'Nakuru County', code: '005' },
+    { id: 'county-6', name: 'Machakos County', code: '006' },
+    { id: 'county-7', name: 'Uasin Gishu County', code: '007' },
+    { id: 'county-8', name: 'Kajiado County', code: '008' },
+    { id: 'county-9', name: 'Meru County', code: '009' },
+    { id: 'county-10', name: 'Kakamega County', code: '010' },
+    { id: 'county-11', name: 'Kisii County', code: '011' },
+    { id: 'county-12', name: 'Kilifi County', code: '012' },
+    { id: 'county-13', name: 'Kwale County', code: '013' },
+    { id: 'county-14', name: 'Lamu County', code: '014' },
+    { id: 'county-15', name: 'Taita Taveta County', code: '015' },
+    { id: 'county-16', name: 'Garissa County', code: '016' },
+    { id: 'county-17', name: 'Wajir County', code: '017' },
+    { id: 'county-18', name: 'Mandera County', code: '018' },
+    { id: 'county-19', name: 'Marsabit County', code: '019' },
+    { id: 'county-20', name: 'Isiolo County', code: '020' },
+    { id: 'county-21', name: 'Samburu County', code: '021' },
+    { id: 'county-22', name: 'Turkana County', code: '022' },
+    { id: 'county-23', name: 'West Pokot County', code: '023' },
+    { id: 'county-24', name: 'Trans Nzoia County', code: '024' },
+    { id: 'county-25', name: 'Elgeyo Marakwet County', code: '025' },
+    { id: 'county-26', name: 'Nandi County', code: '026' },
+    { id: 'county-27', name: 'Baringo County', code: '027' },
+    { id: 'county-28', name: 'Laikipia County', code: '028' },
+    { id: 'county-29', name: 'Nyandarua County', code: '029' },
+    { id: 'county-30', name: 'Nyeri County', code: '030' },
+    { id: 'county-31', name: 'Kirinyaga County', code: '031' },
+    { id: 'county-32', name: 'Muranga County', code: '032' },
+    { id: 'county-33', name: 'Embu County', code: '033' },
+    { id: 'county-34', name: 'Tharaka Nithi County', code: '034' },
+    { id: 'county-35', name: 'Kitui County', code: '035' },
+    { id: 'county-36', name: 'Makueni County', code: '036' },
+    { id: 'county-37', name: 'Bomet County', code: '037' },
+    { id: 'county-38', name: 'Kericho County', code: '038' },
+    { id: 'county-39', name: 'Bungoma County', code: '039' },
+    { id: 'county-40', name: 'Busia County', code: '040' },
+    { id: 'county-41', name: 'Siaya County', code: '041' },
+    { id: 'county-42', name: 'Vihiga County', code: '042' },
+    { id: 'county-43', name: 'Homa Bay County', code: '043' },
+    { id: 'county-44', name: 'Migori County', code: '044' },
+    { id: 'county-45', name: 'Nyamira County', code: '045' },
+    { id: 'county-46', name: 'Narok County', code: '046' },
+    { id: 'county-47', name: 'Tana River County', code: '047' }
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -197,11 +243,11 @@ export default function NewEmergencyPage() {
                     <SelectValue placeholder="Select county" />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* In real app, map through counties from API */}
-                    <SelectItem value="county-1">Nairobi County</SelectItem>
-                    <SelectItem value="county-2">Mombasa County</SelectItem>
-                    <SelectItem value="county-3">Kisumu County</SelectItem>
-                    {/* Add all 47 counties */}
+                    {kenyanCounties.map(county => (
+                      <SelectItem key={county.id} value={county.id}>
+                        {county.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 {formErrors.countyId && (

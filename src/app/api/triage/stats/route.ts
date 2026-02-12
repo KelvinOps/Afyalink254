@@ -1,6 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 
+// Type definitions
+interface DateFilter {
+  gte?: Date
+  lt?: Date
+  lte?: Date
+}
+
+interface WhereConditions {
+  arrivalTime: DateFilter
+  hospitalId?: string
+}
+
+interface HourMapEntry {
+  hour: number
+  total: number
+  immediate: number
+  urgent: number
+}
+
+interface PriorityStats {
+  total: number
+  byStatus: Record<string, number>
+}
+
 // Dashboard API endpoint for triage statistics
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +35,7 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate')
 
     const now = new Date()
-    let dateFilter: any = {}
+    let dateFilter: DateFilter = {}
 
     // Set date range based on period
     switch (period) {
@@ -54,7 +78,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Build where conditions for triage entries
-    const whereConditions: any = {
+    const whereConditions: WhereConditions = {
       arrivalTime: dateFilter
     }
 
@@ -103,7 +127,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Process peak hours data
-    const hourMap: Record<number, any> = {}
+    const hourMap: Record<number, HourMapEntry> = {}
     rawPeakHours.forEach(entry => {
       const hour = new Date(entry.arrivalTime).getHours()
       if (!hourMap[hour]) {
@@ -185,7 +209,7 @@ export async function GET(request: NextRequest) {
     // Process overall stats
     const processedOverallStats = {
       total: triageStats.reduce((acc, curr) => acc + curr._count.id, 0),
-      byPriority: {} as Record<string, any>,
+      byPriority: {} as Record<string, PriorityStats>,
       byStatus: {} as Record<string, number>
     }
 
@@ -208,7 +232,7 @@ export async function GET(request: NextRequest) {
     const processedDeptStats = departments.map(dept => {
       const deptEntries = departmentStats.filter(stat => stat.departmentId === dept.id)
       
-      const byPriority: Record<string, any> = {}
+      const byPriority: Record<string, PriorityStats> = {}
       deptEntries.forEach(entry => {
         if (!byPriority[entry.triageLevel]) {
           byPriority[entry.triageLevel] = { total: 0, byStatus: {} }

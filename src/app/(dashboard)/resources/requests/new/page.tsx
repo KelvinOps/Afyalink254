@@ -1,3 +1,4 @@
+// src/app/(dashboard)/resources/requests/new/page.tsx
 'use client'
 
 import { useState } from 'react'
@@ -8,7 +9,6 @@ import { Input } from '@/app/components/ui/input'
 import { Textarea } from '@/app/components/ui/textarea'
 import { Badge } from '@/app/components/ui/badge'
 import { 
-  Package, 
   Plus, 
   Trash2,
   Save,
@@ -16,14 +16,29 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 
+// Define proper types for urgency and item type
+type UrgencyLevel = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
+type ItemType = 'MEDICAL_SUPPLY' | 'MEDICATION' | 'PPE' | 'LABORATORY_REAGENT' | 'SURGICAL_EQUIPMENT' | 'BLOOD_PRODUCT' | 'OTHER'
+
 interface RequestItem {
   id: string
   name: string
-  type: string
+  type: ItemType
   quantity: number
   unit: string
-  urgency: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
+  urgency: UrgencyLevel
   estimatedCost: number
+}
+
+interface FormData {
+  justification: string
+  priority: UrgencyLevel
+}
+
+interface UrgencyOption {
+  value: UrgencyLevel
+  label: string
+  color: string
 }
 
 export default function NewSupplyRequestPage() {
@@ -40,12 +55,12 @@ export default function NewSupplyRequestPage() {
       estimatedCost: 0
     }
   ])
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     justification: '',
-    priority: 'MEDIUM' as 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
+    priority: 'MEDIUM'
   })
 
-  const addItem = () => {
+  const addItem = (): void => {
     setItems([
       ...items,
       {
@@ -60,19 +75,23 @@ export default function NewSupplyRequestPage() {
     ])
   }
 
-  const removeItem = (id: string) => {
+  const removeItem = (id: string): void => {
     if (items.length > 1) {
       setItems(items.filter(item => item.id !== id))
     }
   }
 
-  const updateItem = (id: string, field: keyof RequestItem, value: any) => {
+  const updateItem = <K extends keyof RequestItem>(
+    id: string, 
+    field: K, 
+    value: RequestItem[K]
+  ): void => {
     setItems(items.map(item => 
       item.id === id ? { ...item, [field]: value } : item
     ))
   }
 
-  const updateItemCost = (id: string, quantity: number, unitCost: number) => {
+  const updateItemCost = (id: string, quantity: number, unitCost: number): void => {
     setItems(items.map(item => 
       item.id === id ? { ...item, estimatedCost: quantity * unitCost } : item
     ))
@@ -80,7 +99,7 @@ export default function NewSupplyRequestPage() {
 
   const totalEstimatedCost = items.reduce((sum, item) => sum + item.estimatedCost, 0)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()
     setLoading(true)
 
@@ -117,7 +136,7 @@ export default function NewSupplyRequestPage() {
     }
   }
 
-  const itemTypes = [
+  const itemTypes: ItemType[] = [
     'MEDICAL_SUPPLY',
     'MEDICATION',
     'PPE',
@@ -127,12 +146,21 @@ export default function NewSupplyRequestPage() {
     'OTHER'
   ]
 
-  const urgencyOptions = [
+  const urgencyOptions: UrgencyOption[] = [
     { value: 'CRITICAL', label: 'Critical', color: 'bg-red-100 text-red-800' },
     { value: 'HIGH', label: 'High', color: 'bg-orange-100 text-orange-800' },
     { value: 'MEDIUM', label: 'Medium', color: 'bg-yellow-100 text-yellow-800' },
     { value: 'LOW', label: 'Low', color: 'bg-green-100 text-green-800' }
   ]
+
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('en-KE', {
+      style: 'currency',
+      currency: 'KES',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount)
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -194,13 +222,14 @@ export default function NewSupplyRequestPage() {
                       <div>
                         <label className="text-sm font-medium">Type</label>
                         <select
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                           value={item.type}
-                          onChange={(e) => updateItem(item.id, 'type', e.target.value)}
+                          onChange={(e) => updateItem(item.id, 'type', e.target.value as ItemType)}
+                          aria-label="Item type"
                         >
                           {itemTypes.map(type => (
                             <option key={type} value={type}>
-                              {type.replace('_', ' ')}
+                              {type.replace(/_/g, ' ')}
                             </option>
                           ))}
                         </select>
@@ -215,7 +244,8 @@ export default function NewSupplyRequestPage() {
                           onChange={(e) => {
                             const quantity = parseInt(e.target.value) || 1
                             updateItem(item.id, 'quantity', quantity)
-                            updateItemCost(item.id, quantity, item.estimatedCost / item.quantity || 0)
+                            const unitCost = item.estimatedCost / (item.quantity || 1)
+                            updateItemCost(item.id, quantity, unitCost || 0)
                           }}
                           required
                         />
@@ -237,7 +267,7 @@ export default function NewSupplyRequestPage() {
                           type="number"
                           step="0.01"
                           min="0"
-                          value={item.estimatedCost / item.quantity || 0}
+                          value={item.quantity > 0 ? (item.estimatedCost / item.quantity).toFixed(2) : 0}
                           onChange={(e) => {
                             const unitCost = parseFloat(e.target.value) || 0
                             updateItemCost(item.id, item.quantity, unitCost)
@@ -249,9 +279,10 @@ export default function NewSupplyRequestPage() {
                       <div>
                         <label className="text-sm font-medium">Urgency</label>
                         <select
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                           value={item.urgency}
-                          onChange={(e) => updateItem(item.id, 'urgency', e.target.value)}
+                          onChange={(e) => updateItem(item.id, 'urgency', e.target.value as UrgencyLevel)}
+                          aria-label="Item urgency"
                         >
                           {urgencyOptions.map(option => (
                             <option key={option.value} value={option.value}>
@@ -264,7 +295,7 @@ export default function NewSupplyRequestPage() {
 
                     <div className="flex justify-between items-center pt-2 border-t">
                       <span className="text-sm text-muted-foreground">Item Total:</span>
-                      <span className="font-semibold">KES {item.estimatedCost.toLocaleString()}</span>
+                      <span className="font-semibold">{formatCurrency(item.estimatedCost)}</span>
                     </div>
                   </div>
                 ))}
@@ -307,9 +338,10 @@ export default function NewSupplyRequestPage() {
                 <div>
                   <label className="text-sm font-medium">Overall Priority</label>
                   <select
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 mt-1"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
                     value={formData.priority}
-                    onChange={(e) => setFormData({...formData, priority: e.target.value as any})}
+                    onChange={(e) => setFormData({...formData, priority: e.target.value as UrgencyLevel})}
+                    aria-label="Overall request priority"
                   >
                     {urgencyOptions.map(option => (
                       <option key={option.value} value={option.value}>
@@ -326,37 +358,56 @@ export default function NewSupplyRequestPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Total Estimated Cost:</span>
-                    <span className="font-semibold text-lg">KES {totalEstimatedCost.toLocaleString()}</span>
+                    <span className="font-semibold text-lg">{formatCurrency(totalEstimatedCost)}</span>
                   </div>
                 </div>
 
                 <div className="pt-4 border-t">
                   <h4 className="font-medium mb-2">Approval Process</h4>
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span>Head of Department:</span>
-                      <Badge variant="outline" className="bg-yellow-100 text-yellow-800">
+                      <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
                         Required
                       </Badge>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span>Hospital Admin:</span>
-                      <Badge variant="outline" className="bg-yellow-100 text-yellow-800">
+                      <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
                         Required
                       </Badge>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span>County Health:</span>
                       {totalEstimatedCost > 50000 ? (
-                        <Badge variant="outline" className="bg-yellow-100 text-yellow-800">
+                        <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
                           Required
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="bg-green-100 text-green-800">
+                        <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
                           Not Required
                         </Badge>
                       )}
                     </div>
+                  </div>
+                </div>
+
+                {/* Items Summary */}
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium mb-2">Items by Urgency</h4>
+                  <div className="space-y-2">
+                    {urgencyOptions.map(option => {
+                      const count = items.filter(item => item.urgency === option.value).length
+                      if (count === 0) return null
+                      return (
+                        <div key={option.value} className="flex justify-between items-center text-sm">
+                          <span>{option.label}:</span>
+                          <Badge className={option.color}>
+                            {count} item{count !== 1 ? 's' : ''}
+                          </Badge>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               </CardContent>
