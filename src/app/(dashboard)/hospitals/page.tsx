@@ -49,29 +49,31 @@ async function getAuthenticatedUser() {
 }
 
 // Helper function to normalize hospital data
-function normalizeHospitals(hospitals: any[]) {
-  return hospitals.map(hospital => ({
-    ...hospital,
-    lastBedUpdate: hospital.lastBedUpdate instanceof Date 
-      ? hospital.lastBedUpdate.toISOString() 
-      : typeof hospital.lastBedUpdate === 'string'
-      ? hospital.lastBedUpdate
-      : new Date().toISOString(),
-    // Add any other date field conversions if needed
-    shaActivationDate: hospital.shaActivationDate instanceof Date ? hospital.shaActivationDate.toISOString() : hospital.shaActivationDate,
-    createdAt: hospital.createdAt instanceof Date ? hospital.createdAt.toISOString() : hospital.createdAt,
-    updatedAt: hospital.updatedAt instanceof Date ? hospital.updatedAt.toISOString() : hospital.updatedAt,
-  }))
+function normalizeHospitals(hospitals: unknown[]) {
+  return hospitals.map(hospital => {
+    const h = hospital as Record<string, unknown>
+    return {
+      ...h,
+      lastBedUpdate: h.lastBedUpdate instanceof Date 
+        ? h.lastBedUpdate.toISOString() 
+        : typeof h.lastBedUpdate === 'string'
+        ? h.lastBedUpdate
+        : new Date().toISOString(),
+      shaActivationDate: h.shaActivationDate instanceof Date ? h.shaActivationDate.toISOString() : h.shaActivationDate,
+      createdAt: h.createdAt instanceof Date ? h.createdAt.toISOString() : h.createdAt,
+      updatedAt: h.updatedAt instanceof Date ? h.updatedAt.toISOString() : h.updatedAt,
+    }
+  })
 }
 
 // Helper function to transform pagination
-function transformPagination(apiPagination: any) {
+function transformPagination(apiPagination: Record<string, unknown> = {}) {
   return {
-    currentPage: apiPagination.page || 1,
-    totalPages: apiPagination.pages || 1,
-    totalItems: apiPagination.total || 0,
-    hasNext: (apiPagination.page || 1) < (apiPagination.pages || 1),
-    hasPrev: (apiPagination.page || 1) > 1,
+    currentPage: (apiPagination.page as number) || 1,
+    totalPages: (apiPagination.pages as number) || 1,
+    totalItems: (apiPagination.total as number) || 0,
+    hasNext: ((apiPagination.page as number) || 1) < ((apiPagination.pages as number) || 1),
+    hasPrev: ((apiPagination.page as number) || 1) > 1,
   }
 }
 
@@ -88,7 +90,7 @@ export default async function HospitalsPage(props: PageProps) {
     search: searchParams.search,
     page: parseInt(searchParams.page || '1'),
     limit: 20,
-  })
+  }) as { data?: unknown[]; pagination?: Record<string, unknown> }
 
   // Transform the data to match component expectations
   const normalizedHospitals = normalizeHospitals(hospitalsResponse.data || [])
@@ -110,7 +112,7 @@ export default async function HospitalsPage(props: PageProps) {
       <HospitalFilters />
       
       <HospitalList 
-        hospitals={normalizedHospitals} 
+        hospitals={normalizedHospitals as unknown as Parameters<typeof HospitalList>[0]['hospitals']} 
         pagination={transformedPagination}
         user={user}
       />

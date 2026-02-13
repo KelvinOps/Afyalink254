@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/app/lib/prisma'
-import { authOptions } from '@/app/lib/auth'
+import { authOptions } from '@/app/lib/auth-options' // Changed from '@/app/lib/auth'
+import { Prisma } from '@prisma/client'
 
 // GET /api/resources/critical-shortages - Get critical resource shortages
 export async function GET(request: NextRequest) {
@@ -17,16 +18,10 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type')
     const severity = searchParams.get('severity')
 
-    // Build where clause for critical shortages
-    const where: any = {
+    // Build where clause for critical shortages with proper typing
+    const where: Prisma.ResourceWhereInput = {
       hospitalId: session.user.facilityId,
       OR: [
-        // Critical level reached
-        {
-          availableCapacity: {
-            lte: prisma.resource.fields.criticalLevel
-          }
-        },
         // Operational status issues
         {
           isOperational: false
@@ -47,11 +42,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (type) {
-      where.type = type
+      where.type = type as Prisma.EnumResourceTypeFilter
     }
 
     // Get critical resources
-    const criticalResources = await prisma.resource.findMany({
+    const allResources = await prisma.resource.findMany({
       where,
       include: {
         department: {
@@ -68,6 +63,15 @@ export async function GET(request: NextRequest) {
         { updatedAt: 'desc' }
       ]
     })
+
+    // Filter for critical level in JavaScript (more reliable than SQL comparison)
+    const criticalResources = allResources.filter(resource => 
+      resource.availableCapacity <= (resource.criticalLevel || 0) ||
+      resource.availableCapacity <= (resource.reorderLevel || 0) ||
+      !resource.isOperational ||
+      (resource.nextMaintenance && resource.nextMaintenance <= new Date()) ||
+      (resource.expiryDate && resource.expiryDate <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
+    )
 
     // Transform and categorize shortages
     const shortages = criticalResources.map(resource => {

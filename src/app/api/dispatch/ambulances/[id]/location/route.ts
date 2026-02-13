@@ -1,13 +1,12 @@
 // api/dispatch/ambulances/[id]/location/route.ts
-
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/app/lib/prisma'
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export async function POST(
@@ -20,11 +19,14 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Await the params
+    const { id } = await params
+
     const body = await request.json()
     const { latitude, longitude, accuracy, timestamp } = body
 
     const ambulance = await prisma.ambulance.findUnique({
-      where: { id: params.id }
+      where: { id }
     })
 
     if (!ambulance) {
@@ -32,7 +34,7 @@ export async function POST(
     }
 
     const updatedAmbulance = await prisma.ambulance.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         currentLocation: {
           lat: latitude,
@@ -72,8 +74,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Await the params
+    const { id } = await params
+
     const ambulance = await prisma.ambulance.findUnique({
-      where: { id: params.id },
+      where: { id },
       select: {
         id: true,
         registrationNumber: true,

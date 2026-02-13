@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/app/contexts/AuthContext'
 import { Button } from '@/app/components/ui/button'
@@ -55,7 +55,7 @@ interface SearchFilters {
 export default function PatientSearchPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user, hasPermission } = useAuth()
+  const { hasPermission } = useAuth()
   
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '')
   const [patients, setPatients] = useState<Patient[]>([])
@@ -69,16 +69,7 @@ export default function PatientSearchPage() {
     gender: ''
   })
 
-  // Load initial search from URL params
-  useEffect(() => {
-    const query = searchParams.get('q')
-    if (query && query.length >= 2) {
-      setSearchQuery(query)
-      handleSearchFromUrl(query)
-    }
-  }, [searchParams])
-
-  const handleSearchFromUrl = async (query: string) => {
+  const handleSearchFromUrl = useCallback(async (query: string) => {
     setLoading(true)
     setError(null)
     setHasSearched(true)
@@ -114,7 +105,16 @@ export default function PatientSearchPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filters]) // Add filters as dependency
+
+  // Load initial search from URL params
+  useEffect(() => {
+    const query = searchParams.get('q')
+    if (query && query.length >= 2) {
+      setSearchQuery(query)
+      handleSearchFromUrl(query)
+    }
+  }, [searchParams, handleSearchFromUrl]) // Add handleSearchFromUrl to dependency array
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -1,9 +1,8 @@
 // src/app/api/telemedicine/route.ts
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
 import { z } from 'zod'
-import { authOptions } from '@/app/lib/auth-options'
+import { verifyToken } from '@/app/lib/auth'
 
 const createSessionSchema = z.object({
   patientId: z.string().min(1, 'Patient ID is required'),
@@ -84,7 +83,10 @@ interface AuditLogData {
 // ── Mock service ─────────────────────────────────────────────────────────────
 
 const mockTelemedicineService = {
-  async getTelemedicineSessions(_options: SessionQueryOptions): Promise<SessionListResult> {
+  async getTelemedicineSessions(options: SessionQueryOptions): Promise<SessionListResult> {
+    // Use the options parameter to avoid unused warning
+    console.log('Fetching sessions with options:', options)
+    
     return {
       sessions: [
         {
@@ -100,8 +102,8 @@ const mockTelemedicineService = {
         },
       ],
       total: 1,
-      page: 1,
-      limit: 50,
+      page: options.page,
+      limit: options.limit,
       totalPages: 1,
     }
   },
@@ -109,13 +111,17 @@ const mockTelemedicineService = {
   async createTelemedicineSession(
     data: z.infer<typeof createSessionSchema> & { createdBy: string }
   ): Promise<TelemedicineSession> {
+    const now = new Date().toISOString()
+    
     return {
       id: `session-${Date.now()}`,
       sessionNumber: `TM-${Date.now().toString().slice(-6)}`,
-      ...data,
+      patientId: data.patientId,
+      specialistId: data.specialistId,
       status: 'SCHEDULED',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      scheduledTime: data.scheduledTime || now, // Provide default if not specified
+      createdAt: now,
+      updatedAt: now,
     }
   },
 
@@ -156,9 +162,17 @@ async function auditLog(data: AuditLogData): Promise<boolean> {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // Get authorization header
+    const authHeader = request.headers.get('authorization')
+    
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
-    if (!session?.user) {
+    const token = authHeader.substring(7)
+    const user = await verifyToken(token)
+
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -173,16 +187,16 @@ export async function GET(request: NextRequest) {
       page,
       limit,
       search,
-      userId: session.user.id,
+      userId: user.id,
     })
 
     await auditLog({
       action: 'READ',
       entityType: 'TELEMEDICINE_SESSION',
       entityId: 'multiple',
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Fetched telemedicine sessions with filters: status=${status}, page=${page}`,
     })
 
@@ -211,9 +225,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // Get authorization header
+    const authHeader = request.headers.get('authorization')
+    
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
-    if (!session?.user) {
+    const token = authHeader.substring(7)
+    const user = await verifyToken(token)
+
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -222,16 +244,16 @@ export async function POST(request: NextRequest) {
 
     const telemedicineSession = await mockTelemedicineService.createTelemedicineSession({
       ...validatedData,
-      createdBy: session.user.id,
+      createdBy: user.id,
     })
 
     await auditLog({
       action: 'CREATE',
       entityType: 'TELEMEDICINE_SESSION',
       entityId: telemedicineSession.id,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Created new telemedicine session: ${telemedicineSession.sessionNumber}`,
       changes: validatedData,
     })
@@ -268,9 +290,17 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // Get authorization header
+    const authHeader = request.headers.get('authorization')
+    
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
-    if (!session?.user) {
+    const token = authHeader.substring(7)
+    const user = await verifyToken(token)
+
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -296,9 +326,9 @@ export async function PUT(request: NextRequest) {
       action: 'UPDATE',
       entityType: 'TELEMEDICINE_SESSION',
       entityId: sessionId,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Updated telemedicine session: ${sessionId}`,
       changes: validatedData,
     })

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
+import { Prisma, PatientStatus, Gender } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,8 +23,8 @@ export async function GET(request: NextRequest) {
     // Validate and sanitize limit
     const safeLimit = Math.min(Math.max(limit, 1), 50)
 
-    // Build where clause
-    const where: any = {
+    // Build where clause with proper typing
+    const where: Prisma.PatientWhereInput = {
       OR: [
         { firstName: { contains: query, mode: 'insensitive' } },
         { lastName: { contains: query, mode: 'insensitive' } },
@@ -34,13 +35,21 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    // Add filters
+    // Add filters with proper enum validation
     if (status) {
-      where.currentStatus = status
+      // Check if the status string is a valid PatientStatus enum value
+      if (Object.values(PatientStatus).includes(status as PatientStatus)) {
+        where.currentStatus = status as PatientStatus
+      }
     }
+    
     if (gender) {
-      where.gender = gender
+      // Check if the gender string is a valid Gender enum value
+      if (Object.values(Gender).includes(gender as Gender)) {
+        where.gender = gender as Gender
+      }
     }
+    
     if (hospital) {
       where.currentHospitalId = hospital
     }

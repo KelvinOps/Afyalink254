@@ -8,21 +8,6 @@ import { ScheduleCalendar } from '@/app/components/telemedicine/ScheduleCalendar
 import { UpcomingAppointments } from '@/app/components/telemedicine/UpcomingAppointments'
 import { AvailabilitySettings } from '@/app/components/telemedicine/AvailabilitySettings'
 
-// Use mock user for now - replace with real auth later
-const mockUser = {
-  id: '1',
-  email: 'doctor@example.com',
-  name: 'Dr. John Smith',
-  role: 'DOCTOR' as const,
-  facilityId: 'hospital-1',
-  countyId: 'county-1',
-  permissions: [
-    'dashboard.read', 'triage.read', 'patients.read', 'patients.write', 'transfers.read',
-    'referrals.read', 'referrals.write', 'telemedicine.read', 'telemedicine.write',
-    'emergencies.read'
-  ]
-}
-
 export default async function TelemedicineSchedulePage() {
   // Comment out for now to get build working
   // const user = await getCurrentUser()

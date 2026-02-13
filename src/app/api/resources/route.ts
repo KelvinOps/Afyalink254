@@ -1,16 +1,23 @@
 // src/app/api/resources/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
 import { prisma } from '@/app/lib/prisma'
-import { authOptions } from '@/app/lib/auth'
+import { verifyAndGetUser, ROLE_PERMISSIONS } from '@/app/lib/auth'
+import { Prisma } from '@prisma/client'
 
 // GET /api/resources - Get all resources with filtering
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // Get the authorization token
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Unauthorized - No token provided' }, { status: 401 })
+    }
+
+    // Verify the token and get user
+    const user = await verifyAndGetUser(authHeader)
     
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized - Invalid token' }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -23,17 +30,17 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit
 
     // Build where clause based on filters
-    const where: any = {
-      hospitalId: session.user.facilityId
+    const where: Prisma.ResourceWhereInput = {
+      hospitalId: user.facilityId
     }
 
     if (type) {
       const types = type.split(',')
-      where.type = { in: types }
+      where.type = { in: types as Prisma.EnumResourceTypeFilter['in'] }
     }
 
     if (status) {
-      where.status = status
+      where.status = status as Prisma.EnumResourceStatusFilter
     }
 
     if (department) {
@@ -112,10 +119,27 @@ export async function GET(request: NextRequest) {
 // POST /api/resources - Create a new resource
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // Get the authorization token
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Unauthorized - No token provided' }, { status: 401 })
+    }
+
+    // Verify the token and get user
+    const user = await verifyAndGetUser(authHeader)
     
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized - Invalid token' }, { status: 401 })
+    }
+
+    // Check permissions
+    const userPermissions = user.permissions || ROLE_PERMISSIONS[user.role] || []
+    const hasResourcePermission = userPermissions.includes('resources.write') || 
+                                  userPermissions.includes('*') ||
+                                  user.role === 'SUPER_ADMIN'
+    
+    if (!hasResourcePermission) {
+      return NextResponse.json({ error: 'Forbidden - Insufficient permissions' }, { status: 403 })
     }
 
     const data = await request.json()
@@ -137,7 +161,7 @@ export async function POST(request: NextRequest) {
         name: data.name,
         type: data.type,
         category: data.category,
-        hospitalId: session.user.facilityId!,
+        hospitalId: user.facilityId!,
         departmentId: data.departmentId,
         totalCapacity: data.totalCapacity,
         availableCapacity: data.availableCapacity || data.totalCapacity,
@@ -172,14 +196,14 @@ export async function POST(request: NextRequest) {
     // Log the resource creation
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name || 'Unknown',
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name || 'Unknown',
         action: 'CREATE',
         entityType: 'RESOURCE',
         entityId: resource.id,
         description: `Created new resource: ${resource.name}`,
-        facilityId: session.user.facilityId
+        facilityId: user.facilityId
       }
     })
 

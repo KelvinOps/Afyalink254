@@ -37,7 +37,7 @@ const updateEmergencySchema = z.object({
   estimatedCasualties: z.number().int().positive().optional(),
   reportedBy: z.string().optional(),
   reporterPhone: z.string().optional(),
-  status: z.enum(['REPORTED', 'CONFIRMED', 'RESPONDING', 'ON_SCENE', 'UNDER_CONTROL', 'RESOLVED', 'ARCHIVED']).optional() // Added status field
+  status: z.enum(['REPORTED', 'CONFIRMED', 'RESPONDING', 'ON_SCENE', 'UNDER_CONTROL', 'RESOLVED', 'ARCHIVED']).optional()
 });
 
 // Type for emergency with included relations (used in notifications)
@@ -296,7 +296,7 @@ export async function POST(request: NextRequest) {
       success: true
     });
 
-    await triggerEmergencyNotifications(emergency);
+    await triggerEmergencyNotifications(emergency as EmergencyWithCounty);
 
     return NextResponse.json(emergency, { status: 201 });
   } catch (error) {
@@ -389,7 +389,14 @@ export async function PATCH(request: NextRequest) {
     // Handle optional fields
     if (data.type !== undefined) updateData.type = data.type;
     if (data.severity !== undefined) updateData.severity = data.severity;
-    if (data.countyId !== undefined) updateData.countyId = data.countyId;
+    
+    // Fix: Use relation update for countyId
+    if (data.countyId !== undefined) {
+      updateData.county = {
+        connect: { id: data.countyId }
+      };
+    }
+    
     if (data.location !== undefined) updateData.location = data.location;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.cause !== undefined) updateData.cause = data.cause;
@@ -505,7 +512,7 @@ async function triggerEmergencyNotifications(emergency: EmergencyWithCounty) {
       }
     });
 
-    for (const _center of dispatchCenters) {
+    for (let i = 0; i < dispatchCenters.length; i++) {
       await prisma.systemAlert.create({
         data: {
           alertNumber: `DISPATCH-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,

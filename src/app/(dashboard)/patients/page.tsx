@@ -1,7 +1,7 @@
 // src/app/(dashboard)/patients/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/app/contexts/AuthContext'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
@@ -77,7 +77,7 @@ export default function PatientsPage() {
     totalPages: 0
   })
 
-  const fetchPatients = async (page = 1, search = '', status = '') => {
+  const fetchPatients = useCallback(async (page = 1, search = '', status = '') => {
     try {
       setLoading(true)
       const params = new URLSearchParams({
@@ -102,11 +102,11 @@ export default function PatientsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user?.facilityId])
 
   useEffect(() => {
     fetchPatients()
-  }, [])
+  }, [fetchPatients])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()

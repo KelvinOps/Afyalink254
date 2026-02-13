@@ -3,18 +3,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { verifyToken } from '@/app/lib/auth'
-import { auditLog } from '@/app/lib/audit'
+import { queueAuditLog, AuditAction } from '@/app/lib/audit'
 
-// Remove unused interface
-// interface RouteParams {
-//   params: {
-//     id: string
-//   }
-// }
+interface RouteParams {
+  params: Promise<{
+    id: string
+  }>
+}
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -29,10 +28,21 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Await the params
+    const { id } = await params
+
     // Check if ambulance exists and user has access
     const ambulance = await prisma.ambulance.findUnique({
-      where: { id: params.id },
-      select: { id: true, facilityId: true, countyId: true }
+      where: { id },
+      select: { 
+        id: true, 
+        hospitalId: true,
+        hospital: {
+          select: {
+            countyId: true
+          }
+        }
+      }
     })
 
     if (!ambulance) {
@@ -40,11 +50,11 @@ export async function GET(
     }
 
     // Check access permissions
-    if (user.role !== 'ADMIN') {
-      if (user.facilityId && ambulance.facilityId !== user.facilityId) {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+      if (user.facilityId && ambulance.hospitalId !== user.facilityId) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-      if (user.countyId && ambulance.countyId !== user.countyId) {
+      if (user.countyId && ambulance.hospital.countyId !== user.countyId) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
@@ -84,7 +94,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -100,9 +110,12 @@ export async function POST(
     }
 
     // Check permissions
-    if (!['ADMIN', 'FACILITY_MANAGER', 'MAINTENANCE_MANAGER'].includes(user.role)) {
+    if (!['ADMIN', 'SUPER_ADMIN', 'FACILITY_MANAGER', 'HOSPITAL_ADMIN'].includes(user.role)) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
+
+    // Await the params
+    const { id } = await params
 
     const body = await request.json()
     const { type, description, cost, performedBy, date } = body
@@ -117,7 +130,7 @@ export async function POST(
 
     // Check if ambulance exists
     const ambulance = await prisma.ambulance.findUnique({
-      where: { id: params.id }
+      where: { id }
     })
 
     if (!ambulance) {
@@ -133,7 +146,7 @@ export async function POST(
       description,
       cost: parseFloat(cost),
       performedBy,
-      ambulanceId: params.id
+      ambulanceId: id
     }
 
     // Update ambulance's next service date (example logic)
@@ -141,23 +154,23 @@ export async function POST(
     nextServiceDate.setMonth(nextServiceDate.getMonth() + 3) // Next service in 3 months
 
     await prisma.ambulance.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         nextServiceDate: nextServiceDate,
         status: 'AVAILABLE' // Return to available status after maintenance
       }
     })
 
-    // Log the action
-    await auditLog({
-      action: 'CREATE',
+    // Log the action - use queueAuditLog with proper structure
+    queueAuditLog({
+      action: AuditAction.CREATE,
       entityType: 'MAINTENANCE',
       entityId: newRecord.id,
       userId: user.id,
       userRole: user.role,
       userName: user.name || user.email || 'Unknown',
-      description: `Added maintenance record for ambulance ${ambulance.registrationNumber}`,
-      details: { type, cost, performedBy }
+      description: `Added maintenance record for ambulance ${ambulance.registrationNumber} - Type: ${type}, Cost: ${cost}, Performed by: ${performedBy}`,
+      facilityId: user.facilityId
     })
 
     return NextResponse.json({ 

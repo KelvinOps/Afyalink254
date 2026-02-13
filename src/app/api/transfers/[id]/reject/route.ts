@@ -1,38 +1,50 @@
 // src/app/api/transfers/[id]/reject/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
 import { z } from 'zod';
-import { prisma } from '@/app/lib/prisma'; // Fixed: named import, not default
-import { authOptions } from '@/app/lib/auth';
+import { prisma } from '@/app/lib/prisma';
+import { verifyAndGetUser, ROLE_PERMISSIONS } from '@/app/lib/auth';
 
 const rejectTransferSchema = z.object({
   rejectionReason: z.string().min(1, 'Rejection reason is required'),
   notes: z.string().optional(),
 });
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+interface RouteParams {
+  params: Promise<{
+    id: string
+  }>
+}
+
+export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Get the authorization token
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Unauthorized - No token provided' }, { status: 401 });
     }
 
-    // Import auth utilities
-    const { ROLE_PERMISSIONS } = await import('@/app/lib/auth');
+    // Verify the token and get user
+    const user = await verifyAndGetUser(authHeader);
     
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized - Invalid token' }, { status: 401 });
+    }
+
+    // Await the params
+    const { id } = await params;
+
     // Check if user has permission to reject transfers
-    const userPermissions = ROLE_PERMISSIONS[session.user.role] || [];
+    const userPermissions = user.permissions || ROLE_PERMISSIONS[user.role] || [];
     const hasTransferPermission = userPermissions.includes('transfers.write') || 
                                  userPermissions.includes('*') ||
-                                 session.user.role === 'SUPER_ADMIN';
+                                 user.role === 'SUPER_ADMIN';
     
     if (!hasTransferPermission) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden - Insufficient permissions' }, { status: 403 });
     }
 
     const transfer = await prisma.transfer.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         destinationHospital: true,
       },
@@ -43,9 +55,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     // Check if user has permission to reject for destination hospital
-    if (session.user.role !== 'SUPER_ADMIN' && 
-        transfer.destinationHospitalId !== session.user.facilityId) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (user.role !== 'SUPER_ADMIN' && 
+        transfer.destinationHospitalId !== user.facilityId) {
+      return NextResponse.json({ error: 'Forbidden - Not authorized for this facility' }, { status: 403 });
     }
 
     if (transfer.status !== 'REQUESTED') {
@@ -68,7 +80,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const data = validationResult.data;
 
     const updatedTransfer = await prisma.transfer.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         status: 'REJECTED',
         rejectedAt: new Date(),
@@ -99,14 +111,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // Create audit log using prisma directly
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name || 'Unknown',
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name || 'Unknown',
         action: 'REJECT',
         entityType: 'TRANSFER',
         entityId: transfer.id,
         description: `Rejected transfer ${transfer.transferNumber}: ${data.rejectionReason}`,
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
       }
     });
 

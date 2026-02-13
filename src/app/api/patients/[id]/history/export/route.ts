@@ -105,22 +105,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    const formatDateTime = (date: string | Date): string => {
-      try {
-        const d = new Date(date)
-        if (isNaN(d.getTime())) return 'N/A'
-        return d.toLocaleString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        })
-      } catch {
-        return 'N/A'
-      }
-    }
+    // Remove unused formatDateTime function
+    // const formatDateTime = (date: string | Date): string => {
+    //   try {
+    //     const d = new Date(date)
+    //     if (isNaN(d.getTime())) return 'N/A'
+    //     return d.toLocaleString('en-US', {
+    //       year: 'numeric',
+    //       month: 'short',
+    //       day: 'numeric',
+    //       hour: '2-digit',
+    //       minute: '2-digit',
+    //       hour12: true
+    //     })
+    //   } catch {
+    //     return 'N/A'
+    //   }
+    // }
 
     const calculateAge = (dateOfBirth: string | Date): number => {
       try {
@@ -142,22 +143,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Helper function to parse vital signs
-    const parseVitalSigns = (vitalSigns: any): VitalSigns | null => {
+    const parseVitalSigns = (vitalSigns: unknown): VitalSigns | null => {
       if (!vitalSigns) return null
       
       try {
         if (typeof vitalSigns === 'object' && vitalSigns !== null) {
+          const v = vitalSigns as Record<string, unknown>
           return {
-            heartRate: Number(vitalSigns.heartRate) || 0,
-            bloodPressure: String(vitalSigns.bloodPressure || 'N/A'),
-            respiratoryRate: Number(vitalSigns.respiratoryRate) || 0,
-            temperature: Number(vitalSigns.temperature) || 0,
-            oxygenSaturation: Number(vitalSigns.oxygenSaturation) || 0,
-            painLevel: Number(vitalSigns.painLevel) || 0,
-            bloodSugar: vitalSigns.bloodSugar ? Number(vitalSigns.bloodSugar) : undefined,
-            weight: vitalSigns.weight ? Number(vitalSigns.weight) : undefined,
-            height: vitalSigns.height ? Number(vitalSigns.height) : undefined,
-            bmi: vitalSigns.bmi ? Number(vitalSigns.bmi) : undefined
+            heartRate: Number(v.heartRate) || 0,
+            bloodPressure: String(v.bloodPressure || 'N/A'),
+            respiratoryRate: Number(v.respiratoryRate) || 0,
+            temperature: Number(v.temperature) || 0,
+            oxygenSaturation: Number(v.oxygenSaturation) || 0,
+            painLevel: Number(v.painLevel) || 0,
+            bloodSugar: v.bloodSugar ? Number(v.bloodSugar) : undefined,
+            weight: v.weight ? Number(v.weight) : undefined,
+            height: v.height ? Number(v.height) : undefined,
+            bmi: v.bmi ? Number(v.bmi) : undefined
           }
         }
         

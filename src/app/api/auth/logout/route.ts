@@ -7,8 +7,6 @@ export async function POST(request: NextRequest) {
     // Get user from token before clearing cookies
     const token = request.cookies.get('auth_token')?.value
     let userName = 'Unknown'
-    let userId = 'unknown'
-    let userRole = 'unknown'
     
     if (token) {
       try {
@@ -16,8 +14,6 @@ export async function POST(request: NextRequest) {
         const user = await verifyToken(token)
         if (user) {
           userName = user.name
-          userId = user.id
-          userRole = user.role
           
           // Get IP and user agent
           const ipAddress = request.headers.get('x-forwarded-for') || 

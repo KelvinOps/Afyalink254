@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { verifyToken, hasPermission, createUserObject } from '@/app/lib/auth'
-import { auditLog } from '@/app/lib/audit'
-import { ShiftType } from '@prisma/client' 
+import { auditLog, AuditAction } from '@/app/lib/audit'
+import { ShiftType, Prisma } from '@prisma/client'
+import { nanoid } from 'nanoid' // You'll need to install this: npm install nanoid
 
 interface RouteParams {
   params: {
@@ -25,6 +26,13 @@ async function getSession(request: NextRequest) {
   }
 
   return createUserObject(payload)
+}
+
+// Helper function to generate unique schedule number
+function generateScheduleNumber(): string {
+  const timestamp = Date.now().toString(36)
+  const random = nanoid(8)
+  return `SCH-${timestamp}-${random}`.toUpperCase()
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -88,26 +96,26 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    let where: any = {
+    // Build the where clause with proper typing
+    const where: Prisma.StaffScheduleWhereInput = {
       staffId: params.id,
-      isActive: true
-    }
-
-    if (startDate && endDate) {
-      where.OR = [
-        {
-          startTime: {
-            gte: new Date(startDate),
-            lte: new Date(endDate)
+      isActive: true,
+      ...(startDate && endDate && {
+        OR: [
+          {
+            startTime: {
+              gte: new Date(startDate),
+              lte: new Date(endDate)
+            }
+          },
+          {
+            endTime: {
+              gte: new Date(startDate),
+              lte: new Date(endDate)
+            }
           }
-        },
-        {
-          endTime: {
-            gte: new Date(startDate),
-            lte: new Date(endDate)
-          }
-        }
-      ]
+        ]
+      })
     }
 
     const schedules = await prisma.staffSchedule.findMany({
@@ -241,11 +249,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const schedule = await prisma.staffSchedule.create({
       data: {
+        scheduleNumber: generateScheduleNumber(), // Generate unique schedule number
         staffId: params.id,
         startTime: new Date(body.startTime),
         endTime: new Date(body.endTime),
         shiftType: body.shiftType,
+        facilityType: staff.facilityType, // Use staff's facility type
         departmentId: body.departmentId,
+        hospitalId: staff.hospitalId,
+        healthCenterId: staff.healthCenterId,
+        dispensaryId: staff.dispensaryId,
         notes: body.notes,
         isActive: true,
         createdById: session.id // Track who created the schedule
@@ -271,7 +284,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Log the audit
     await auditLog({
-      action: 'CREATE',
+      action: AuditAction.CREATE,
       entityType: 'STAFF_SCHEDULE',
       entityId: schedule.id,
       userId: session.id,

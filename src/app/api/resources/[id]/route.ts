@@ -2,13 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/app/lib/prisma'
-import { authOptions } from '@/app/lib/auth'
-
-interface RouteParams {
-  params: {
-    id: string
-  }
-}
+import { authOptions } from '@/app/lib/auth-options'
+import { Prisma } from '@prisma/client'
 
 // GET /api/resources/[id] - Get specific resource
 export async function GET(
@@ -140,14 +135,19 @@ export async function PATCH(
       )
     }
 
-    // Prepare update data
-    const updateData: any = {}
+    // Prepare update data with proper typing
+    const updateData: Prisma.ResourceUpdateInput = {}
 
     // Only include fields that are provided
     if (data.name !== undefined) updateData.name = data.name
     if (data.type !== undefined) updateData.type = data.type
     if (data.category !== undefined) updateData.category = data.category
-    if (data.departmentId !== undefined) updateData.departmentId = data.departmentId
+    // Fix: Use department connect instead of direct departmentId
+    if (data.departmentId !== undefined) {
+      updateData.department = data.departmentId 
+        ? { connect: { id: data.departmentId } }
+        : { disconnect: true }
+    }
     if (data.totalCapacity !== undefined) updateData.totalCapacity = data.totalCapacity
     if (data.availableCapacity !== undefined) updateData.availableCapacity = data.availableCapacity
     if (data.reservedCapacity !== undefined) updateData.reservedCapacity = data.reservedCapacity

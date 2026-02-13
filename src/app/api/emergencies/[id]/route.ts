@@ -249,8 +249,8 @@ export async function PATCH(
       }
     }
 
-    // Build update data properly
-    const updateData: any = {};
+    // Build update data with proper typing
+    const updateData: Prisma.EmergencyUpdateInput = {};
     
     // Track changed fields manually
     const changedFields: string[] = [];
@@ -349,17 +349,15 @@ export async function PATCH(
     }
 
     // Handle status transitions
-    let statusChanged = false;
     if (data.status !== undefined) {
       updateData.status = data.status;
       changedFields.push('status');
-      statusChanged = true;
       
       if (data.status === 'RESOLVED' && !data.resolvedAt) {
-        updateData.resolvedAt = new Date().toISOString();
+        updateData.resolvedAt = new Date();
         changedFields.push('resolvedAt');
       } else if (data.resolvedAt !== undefined) {
-        updateData.resolvedAt = data.resolvedAt;
+        updateData.resolvedAt = new Date(data.resolvedAt);
         changedFields.push('resolvedAt');
       }
     }

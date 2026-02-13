@@ -157,9 +157,11 @@ export async function POST(request: NextRequest) {
             console.log('   - Test hash comparison (should be true):', testResult)
           }
         }
-      } catch (bcryptError: any) {
-        console.error('❌ Bcrypt comparison error:', bcryptError.message)
-        console.error('   Stack:', bcryptError.stack)
+      } catch (bcryptError) {
+        const errorMessage = bcryptError instanceof Error ? bcryptError.message : 'Unknown bcrypt error'
+        const errorStack = bcryptError instanceof Error ? bcryptError.stack : undefined
+        console.error('❌ Bcrypt comparison error:', errorMessage)
+        console.error('   Stack:', errorStack)
         isValidPassword = false
       }
     }

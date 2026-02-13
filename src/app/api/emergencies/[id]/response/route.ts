@@ -5,6 +5,7 @@ import { prisma } from '@/app/lib/prisma';
 import { authOptions } from '@/app/lib/auth-options';
 import { auditLog } from '@/app/lib/audit';
 import { createUserObject, hasPermission, canAccessModule } from '@/app/lib/auth';
+import { Prisma } from '@prisma/client';
 
 const createResponseSchema = z.object({
   hospitalId: z.string().cuid(),
@@ -410,16 +411,28 @@ export async function PATCH(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    const updateData: any = { ...data };
+    // Build update data with proper typing
+    const updateData: Prisma.EmergencyResponseUpdateInput = {}
 
+    // Add fields from validated data
+    if (data.status !== undefined) updateData.status = data.status
+    if (data.arrivedAt !== undefined) updateData.arrivedAt = new Date(data.arrivedAt)
+    if (data.departedAt !== undefined) updateData.departedAt = new Date(data.departedAt)
+    if (data.completedAt !== undefined) updateData.completedAt = new Date(data.completedAt)
+    if (data.patientsTriaged !== undefined) updateData.patientsTriaged = data.patientsTriaged
+    if (data.patientsTransported !== undefined) updateData.patientsTransported = data.patientsTransported
+    if (data.patientsByPriority !== undefined) updateData.patientsByPriority = data.patientsByPriority
+    if (data.notes !== undefined) updateData.notes = data.notes
+
+    // Auto-set timestamps based on status
     if (data.status === 'ON_SCENE' && !data.arrivedAt) {
-      updateData.arrivedAt = new Date();
+      updateData.arrivedAt = new Date()
     }
     if (data.status === 'TRANSPORTING' && !data.departedAt) {
-      updateData.departedAt = new Date();
+      updateData.departedAt = new Date()
     }
     if (data.status === 'COMPLETED' && !data.completedAt) {
-      updateData.completedAt = new Date();
+      updateData.completedAt = new Date()
     }
 
     const response = await prisma.emergencyResponse.update({

@@ -3,12 +3,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { verifyToken } from '@/app/lib/auth'
-import { auditLog } from '@/app/lib/audit'
+import { auditLog, AuditAction } from '@/app/lib/audit'
+import { AmbulanceStatus } from '@prisma/client'
 
-interface RouteParams {
-  params: {
-    id: string
-  }
+// Define proper types for ambulance update data with Prisma-compatible types
+interface AmbulanceUpdateData {
+  status?: AmbulanceStatus
+  currentLocation?: object | string
+  fuelLevel?: number
+  isOperational?: boolean
+  driverName?: string
+  driverPhone?: string
+  paramedicName?: string
+  mileage?: number
+  odometerReading?: number
+}
+
+interface CountyAmbulanceUpdateData {
+  status?: AmbulanceStatus
+  currentLocation?: object | string
+  fuelLevel?: number
+  isOperational?: boolean
+  driverName?: string
+  driverPhone?: string
+  mileage?: number
 }
 
 export async function GET(
@@ -29,7 +47,7 @@ export async function GET(
     }
 
     // Try to find in hospital ambulances first
-    let ambulance = await prisma.ambulance.findUnique({
+    const ambulance = await prisma.ambulance.findUnique({
       where: { id: params.id },
       include: {
         hospital: {
@@ -58,10 +76,12 @@ export async function GET(
     })
 
     let ambulanceType: 'HOSPITAL' | 'COUNTY' = 'HOSPITAL'
+    let responseAmbulance = ambulance
+    let countyIdForAccess: string | undefined
     
     // If not found in hospital ambulances, try county ambulances
     if (!ambulance) {
-      ambulance = await prisma.countyAmbulance.findUnique({
+      const countyAmbulance = await prisma.countyAmbulance.findUnique({
         where: { id: params.id },
         include: {
           county: {
@@ -82,21 +102,28 @@ export async function GET(
             }
           }
         }
-      }) as any
-      ambulanceType = 'COUNTY'
+      })
+      
+      if (countyAmbulance) {
+        // Use a properly typed variable instead of casting
+        responseAmbulance = countyAmbulance as unknown as typeof ambulance
+        ambulanceType = 'COUNTY'
+        countyIdForAccess = countyAmbulance.countyId
+      }
     }
 
-    if (!ambulance) {
+    if (!responseAmbulance) {
       return NextResponse.json({ error: 'Ambulance not found' }, { status: 404 })
     }
 
     // Check access permissions
     if (ambulanceType === 'HOSPITAL') {
-      if (user.role !== 'ADMIN' && user.hospitalId !== ambulance.hospitalId) {
+      if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' && user.hospitalId !== responseAmbulance.hospitalId) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     } else if (ambulanceType === 'COUNTY') {
-      if (user.role !== 'ADMIN' && user.countyId !== ambulance.countyId) {
+      // For county ambulances, check countyId
+      if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' && user.countyId !== countyIdForAccess) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
@@ -125,12 +152,12 @@ export async function GET(
 
     // Format dates for frontend
     const formattedAmbulance = {
-      ...ambulance,
+      ...responseAmbulance,
       ambulanceType,
-      lastServiceDate: ambulance.lastServiceDate?.toISOString(),
-      nextServiceDate: ambulance.nextServiceDate?.toISOString(),
-      createdAt: ambulance.createdAt.toISOString(),
-      updatedAt: ambulance.updatedAt.toISOString()
+      lastServiceDate: responseAmbulance.lastServiceDate?.toISOString(),
+      nextServiceDate: responseAmbulance.nextServiceDate?.toISOString(),
+      createdAt: responseAmbulance.createdAt.toISOString(),
+      updatedAt: responseAmbulance.updatedAt.toISOString()
     }
 
     return NextResponse.json({ 
@@ -178,22 +205,23 @@ export async function PATCH(
     } = body
 
     // Try to update hospital ambulance first
-    let ambulance = await prisma.ambulance.findUnique({
+    const ambulance = await prisma.ambulance.findUnique({
       where: { id: params.id }
     })
 
     let ambulanceType: 'HOSPITAL' | 'COUNTY' = 'HOSPITAL'
-    let updateData: any = {}
+    let updatedAmbulance
     
     if (ambulance) {
       // Check permissions for hospital ambulance
-      if (user.role !== 'ADMIN' && user.hospitalId !== ambulance.hospitalId) {
+      if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' && user.hospitalId !== ambulance.hospitalId) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
       
-      // Build update data
-      if (status) updateData.status = status
-      if (currentLocation) updateData.currentLocation = currentLocation
+      // Build update data with proper typing
+      const updateData: AmbulanceUpdateData = {}
+      if (status) updateData.status = status as AmbulanceStatus
+      if (currentLocation !== undefined) updateData.currentLocation = currentLocation
       if (fuelLevel !== undefined) updateData.fuelLevel = fuelLevel
       if (isOperational !== undefined) updateData.isOperational = isOperational
       if (driverName !== undefined) updateData.driverName = driverName
@@ -201,42 +229,44 @@ export async function PATCH(
       if (paramedicName !== undefined) updateData.paramedicName = paramedicName
       if (mileage !== undefined) updateData.mileage = mileage
       if (odometerReading !== undefined) updateData.odometerReading = odometerReading
+      
       if (Object.keys(updateData).length === 0) {
         return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
       }
 
-      ambulance = await prisma.ambulance.update({
+      updatedAmbulance = await prisma.ambulance.update({
         where: { id: params.id },
         data: updateData
       })
     } else {
       // Try county ambulance
-      ambulance = await prisma.countyAmbulance.findUnique({
+      const countyAmbulance = await prisma.countyAmbulance.findUnique({
         where: { id: params.id }
       })
       
-      if (ambulance) {
+      if (countyAmbulance) {
         ambulanceType = 'COUNTY'
         
         // Check permissions for county ambulance
-        if (user.role !== 'ADMIN' && user.countyId !== ambulance.countyId) {
+        if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN' && user.countyId !== countyAmbulance.countyId) {
           return NextResponse.json({ error: 'Access denied' }, { status: 403 })
         }
         
-        // Build update data for county ambulance
-        const countyUpdateData: any = {}
-        if (status) countyUpdateData.status = status
-        if (currentLocation) countyUpdateData.currentLocation = currentLocation
+        // Build update data for county ambulance with proper typing
+        const countyUpdateData: CountyAmbulanceUpdateData = {}
+        if (status) countyUpdateData.status = status as AmbulanceStatus
+        if (currentLocation !== undefined) countyUpdateData.currentLocation = currentLocation
         if (fuelLevel !== undefined) countyUpdateData.fuelLevel = fuelLevel
         if (isOperational !== undefined) countyUpdateData.isOperational = isOperational
         if (driverName !== undefined) countyUpdateData.driverName = driverName
         if (driverPhone !== undefined) countyUpdateData.driverPhone = driverPhone
         if (mileage !== undefined) countyUpdateData.mileage = mileage
+        
         if (Object.keys(countyUpdateData).length === 0) {
           return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
         }
 
-        ambulance = await prisma.countyAmbulance.update({
+        updatedAmbulance = await prisma.countyAmbulance.update({
           where: { id: params.id },
           data: countyUpdateData
         })
@@ -245,20 +275,25 @@ export async function PATCH(
       }
     }
 
-    // Log the action
+    // Ensure we have an updated ambulance before proceeding
+    if (!updatedAmbulance) {
+      return NextResponse.json({ error: 'Failed to update ambulance' }, { status: 500 })
+    }
+
+    // Log the action with proper AuditAction enum
     await auditLog({
-      action: 'UPDATE',
+      action: AuditAction.UPDATE,
       entityType: ambulanceType === 'HOSPITAL' ? 'AMBULANCE' : 'COUNTY_AMBULANCE',
       entityId: params.id,
       userId: user.id,
       userRole: user.role,
       userName: user.name,
-      description: `Updated ambulance ${ambulance.registrationNumber} status to ${status || 'other fields'}`,
+      description: `Updated ambulance ${updatedAmbulance.registrationNumber} status to ${status || 'other fields'}`,
       facilityId: user.facilityId || user.hospitalId
     })
 
     return NextResponse.json({ 
-      ambulance,
+      ambulance: updatedAmbulance,
       ambulanceType
     })
   } catch (error) {

@@ -1,9 +1,8 @@
 // src/app/api/transfers/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
 import { z } from 'zod';
 import { prisma } from '@/app/lib/prisma';
-import { authOptions } from '@/app/lib/auth';
+import { verifyToken, ROLE_PERMISSIONS } from '@/app/lib/auth';
 
 const updateTransferSchema = z.object({
   reason: z.string().optional(),
@@ -22,9 +21,17 @@ const updateTransferSchema = z.object({
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const session = await getServerSession(authOptions);
+    // Get authorization header
+    const authHeader = request.headers.get('authorization');
     
-    if (!session?.user) {
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7);
+    const user = await verifyToken(token);
+    
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -82,8 +89,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             role: true,
           },
         },
-        // NOTE: approvedBy relation doesn't exist in Prisma schema
-        // If you need it, you'll have to fetch it separately
         triageEntry: {
           select: {
             id: true,
@@ -99,15 +104,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: 'Transfer not found' }, { status: 404 });
     }
 
-    // Import auth utilities
-    const { ROLE_PERMISSIONS } = await import('@/app/lib/auth');
-    
     // Authorization check
-    if (session.user.role !== 'SUPER_ADMIN') {
-      const isOriginHospital = transfer.originHospitalId === session.user.facilityId;
-      const isDestinationHospital = transfer.destinationHospitalId === session.user.facilityId;
+    if (user.role !== 'SUPER_ADMIN' && user.role !== 'ADMIN') {
+      const isOriginHospital = transfer.originHospitalId === user.facilityId;
+      const isDestinationHospital = transfer.destinationHospitalId === user.facilityId;
       
-      const userPermissions = ROLE_PERMISSIONS[session.user.role] || [];
+      const userPermissions = ROLE_PERMISSIONS[user.role] || [];
       const hasTransferReadPermission = userPermissions.includes('transfers.read') || 
                                       userPermissions.includes('*');
       
@@ -148,19 +150,25 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const session = await getServerSession(authOptions);
+    // Get authorization header
+    const authHeader = request.headers.get('authorization');
     
-    if (!session?.user) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Import auth utilities
-    const { ROLE_PERMISSIONS } = await import('@/app/lib/auth');
+    const token = authHeader.substring(7);
+    const user = await verifyToken(token);
     
-    const userPermissions = ROLE_PERMISSIONS[session.user.role] || [];
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const userPermissions = ROLE_PERMISSIONS[user.role] || [];
     const hasTransferWritePermission = userPermissions.includes('transfers.write') || 
                                      userPermissions.includes('*') ||
-                                     session.user.role === 'SUPER_ADMIN';
+                                     user.role === 'SUPER_ADMIN' ||
+                                     user.role === 'ADMIN';
     
     if (!hasTransferWritePermission) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -216,9 +224,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     // Create audit log using prisma directly
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name || 'Unknown',
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name || 'Unknown',
         action: 'UPDATE',
         entityType: 'TRANSFER',
         entityId: transfer.id,
@@ -227,7 +235,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           old: oldData,
           new: updatedTransfer,
         },
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
       }
     });
 
@@ -243,19 +251,25 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const session = await getServerSession(authOptions);
+    // Get authorization header
+    const authHeader = request.headers.get('authorization');
     
-    if (!session?.user) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Import auth utilities
-    const { ROLE_PERMISSIONS } = await import('@/app/lib/auth');
+    const token = authHeader.substring(7);
+    const user = await verifyToken(token);
     
-    const userPermissions = ROLE_PERMISSIONS[session.user.role] || [];
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const userPermissions = ROLE_PERMISSIONS[user.role] || [];
     const hasTransferWritePermission = userPermissions.includes('transfers.write') || 
                                      userPermissions.includes('*') ||
-                                     session.user.role === 'SUPER_ADMIN';
+                                     user.role === 'SUPER_ADMIN' ||
+                                     user.role === 'ADMIN';
     
     if (!hasTransferWritePermission) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -277,7 +291,8 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       );
     }
 
-    const deletedTransfer = await prisma.transfer.update({
+    // Update the transfer status to cancelled
+    await prisma.transfer.update({
       where: { id: params.id },
       data: {
         status: 'CANCELLED',
@@ -289,14 +304,14 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     // Create audit log using prisma directly
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name || 'Unknown',
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name || 'Unknown',
         action: 'CANCEL',
         entityType: 'TRANSFER',
         entityId: transfer.id,
         description: `Cancelled transfer ${transfer.transferNumber}`,
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
       }
     });
 

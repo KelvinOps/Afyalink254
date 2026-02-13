@@ -1,9 +1,8 @@
 // src/app/api/transfers/[id]/approve/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
 import { z } from 'zod';
-import { prisma } from '@/app/lib/prisma'; // Named import, not default
-import { authOptions } from '@/app/lib/auth';
+import { prisma } from '@/app/lib/prisma';
+import { verifyToken, ROLE_PERMISSIONS } from '@/app/lib/auth';
 
 const approveTransferSchema = z.object({
   bedReserved: z.boolean().optional().default(false),
@@ -13,28 +12,28 @@ const approveTransferSchema = z.object({
   notes: z.string().optional(),
 });
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
-
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const session = await getServerSession(authOptions);
+    // Get authorization header
+    const authHeader = request.headers.get('authorization');
     
-    if (!session?.user) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Import auth utilities
-    const { hasPermission, ROLE_PERMISSIONS } = await import('@/app/lib/auth');
+    const token = authHeader.substring(7);
+    const user = await verifyToken(token);
     
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Check if user has permission to approve transfers
-    const userPermissions = ROLE_PERMISSIONS[session.user.role] || [];
+    const userPermissions = ROLE_PERMISSIONS[user.role] || [];
     const hasTransferPermission = userPermissions.includes('transfers.write') || 
                                  userPermissions.includes('*') ||
-                                 session.user.role === 'SUPER_ADMIN';
+                                 user.role === 'SUPER_ADMIN' ||
+                                 user.role === 'ADMIN';
     
     if (!hasTransferPermission) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -52,8 +51,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     // Check if user has permission to approve for destination hospital
-    if (session.user.role !== 'SUPER_ADMIN' && 
-        transfer.destinationHospitalId !== session.user.facilityId) {
+    if (user.role !== 'SUPER_ADMIN' && 
+        user.role !== 'ADMIN' &&
+        transfer.destinationHospitalId !== user.facilityId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -81,10 +81,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       data: {
         status: 'APPROVED',
         approvedAt: new Date(),
-        approvedById: session.user.id,
+        approvedById: user.id,
         bedReserved: data.bedReserved,
         bedNumber: data.bedNumber,
-        acceptedByName: data.acceptedByName || session.user.name,
+        acceptedByName: data.acceptedByName || user.name,
         acceptedByPhone: data.acceptedByPhone,
         notes: data.notes,
       },
@@ -112,14 +112,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
-        userRole: session.user.role,
-        userName: session.user.name || 'Unknown',
+        userId: user.id,
+        userRole: user.role,
+        userName: user.name || 'Unknown',
         action: 'APPROVE',
         entityType: 'TRANSFER',
         entityId: transfer.id,
         description: `Approved transfer ${transfer.transferNumber} from ${updatedTransfer.originHospital?.name || 'Unknown'} to ${updatedTransfer.destinationHospital?.name || 'Unknown'}`,
-        facilityId: session.user.facilityId,
+        facilityId: user.facilityId,
       }
     });
 

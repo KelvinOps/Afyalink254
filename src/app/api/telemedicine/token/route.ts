@@ -1,8 +1,7 @@
 // src/app/api/telemedicine/token/route.ts
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/lib/auth-options'
+import { verifyToken } from '@/app/lib/auth'
 
 // Mock service functions
 const mockTelemedicineService = {
@@ -21,8 +20,21 @@ const mockTelemedicineService = {
   }
 }
 
+// Define proper type for audit log data
+interface AuditLogData {
+  action: string
+  entityType: string
+  entityId: string
+  userId: string
+  userRole: string
+  userName: string
+  description: string
+  success?: boolean
+  errorMessage?: string
+}
+
 // Mock audit log function
-async function auditLog(data: any) {
+async function auditLog(data: AuditLogData) {
   console.log('Audit log:', data)
   return true
 }
@@ -48,9 +60,17 @@ function generateVideoToken(identity: string, roomName: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // Get authorization header
+    const authHeader = request.headers.get('authorization')
     
-    if (!session?.user) {
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await verifyToken(token)
+    
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -74,8 +94,8 @@ export async function POST(request: NextRequest) {
 
     // Check if user is participant in the session
     const isParticipant = 
-      telemedicineSession.specialistId === session.user.id ||
-      telemedicineSession.patientId === session.user.id
+      telemedicineSession.specialistId === user.id ||
+      telemedicineSession.patientId === user.id
 
     if (!isParticipant) {
       return NextResponse.json(
@@ -88,21 +108,21 @@ export async function POST(request: NextRequest) {
     const roomName = `telemedicine-session-${sessionId}`
 
     // Generate video call token
-    const token = generateVideoToken(session.user.id, roomName)
+    const videoToken = generateVideoToken(user.id, roomName)
 
     // Audit log
     await auditLog({
       action: 'CREATE',
       entityType: 'VIDEO_TOKEN',
       entityId: sessionId,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Generated video token for telemedicine session: ${telemedicineSession.sessionNumber}`,
     })
 
     return NextResponse.json({
-      ...token,
+      ...videoToken,
       sessionId,
     })
   } catch (error) {
@@ -129,9 +149,17 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // Get authorization header
+    const authHeader = request.headers.get('authorization')
     
-    if (!session?.user) {
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const token = authHeader.substring(7)
+    const user = await verifyToken(token)
+    
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -156,8 +184,8 @@ export async function GET(request: NextRequest) {
 
     // Check if user is participant in the session
     const isParticipant = 
-      telemedicineSession.specialistId === session.user.id ||
-      telemedicineSession.patientId === session.user.id
+      telemedicineSession.specialistId === user.id ||
+      telemedicineSession.patientId === user.id
 
     if (!isParticipant) {
       return NextResponse.json(
@@ -170,21 +198,21 @@ export async function GET(request: NextRequest) {
     const roomName = `telemedicine-session-${sessionId}`
 
     // Generate video call token
-    const token = generateVideoToken(session.user.id, roomName)
+    const videoToken = generateVideoToken(user.id, roomName)
 
     // Audit log
     await auditLog({
       action: 'CREATE',
       entityType: 'VIDEO_TOKEN',
       entityId: sessionId,
-      userId: session.user.id,
-      userRole: session.user.role,
-      userName: session.user.name,
+      userId: user.id,
+      userRole: user.role,
+      userName: user.name,
       description: `Generated video token for telemedicine session: ${telemedicineSession.sessionNumber}`,
     })
 
     return NextResponse.json({
-      ...token,
+      ...videoToken,
       sessionId,
     })
   } catch (error) {

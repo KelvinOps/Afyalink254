@@ -1,6 +1,10 @@
 // src/app/api/patients/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
+import { Prisma } from '@prisma/client'
+
+// Import the PatientStatus enum from Prisma client
+import { PatientStatus } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +20,7 @@ export async function GET(request: NextRequest) {
     const safeLimit = Math.min(Math.max(limit, 1), 100) // Limit between 1-100
     const skip = (safePage - 1) * safeLimit
 
-    const where: any = {}
+    const where: Prisma.PatientWhereInput = {}
 
     if (search && search.trim().length > 0) {
       where.OR = [
@@ -30,7 +34,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (status) {
-      where.currentStatus = status
+      // Check if the status string is a valid PatientStatus enum value
+      if (Object.values(PatientStatus).includes(status as PatientStatus)) {
+        where.currentStatus = status as PatientStatus
+      }
     }
 
     if (hospitalId) {
@@ -132,7 +139,7 @@ export async function POST(request: NextRequest) {
       shaStatus: body.shaStatus || 'NOT_REGISTERED',
       contributionStatus: body.contributionStatus || 'UNKNOWN',
       currentHospitalId: body.currentHospitalId,
-      currentStatus: 'REGISTERED' as const // ✅ Fixed: Use const assertion for enum value
+      currentStatus: PatientStatus.REGISTERED // ✅ Use the enum value, not a string literal
     }
 
     const patient = await prisma.patient.create({

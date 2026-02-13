@@ -12,8 +12,6 @@ import {
   VideoOff, 
   Mic, 
   MicOff, 
-  Phone, 
-  PhoneOff,
   Users,
   MessageSquare,
   FileText,
@@ -26,14 +24,17 @@ import { ConsultationNotes } from '@/app/components/telemedicine/ConsultationNot
 import { useTelemedicineCall } from '@/app/hooks/useTelemedicineCall'
 import Link from 'next/link'
 
+// Import the Session type from the components
+import type { Session } from '@/app/components/telemedicine/types'
+
 interface VideoCallPageProps {
   params: Promise<{
     id: string
   }>
 }
 
-// Helper function to transform session data
-function transformSessionData(session: any) {
+// Helper function to transform session data with proper typing
+function transformSessionData(session: Session | null): Session | null {
   if (!session) return session
 
   // First get the scheduledAt value with fallback
@@ -110,7 +111,7 @@ function VideoCallPageInner({ params }: { params: { id: string } }) {
   } = useTelemedicineCall(params.id)
 
   // Transform the session data to include required fields
-  const session = transformSessionData(rawSession)
+  const session = transformSessionData(rawSession as Session | null)
 
   useEffect(() => {
     if (session?.status === 'SCHEDULED') {

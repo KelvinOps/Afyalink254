@@ -1,3 +1,5 @@
+// eslint.config.js
+
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { FlatCompat } from "@eslint/eslintrc";
@@ -29,6 +31,7 @@ const eslintConfig = [
       "*.config.mjs",
       "*.config.cjs",
       "coverage/",
+      "next-env.d.ts", // ✅ Add this line to ignore the Next.js environment declaration file
     ],
   },
 ];

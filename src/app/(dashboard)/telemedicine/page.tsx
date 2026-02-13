@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs'
-import { Calendar, Video, Clock, Users, Activity } from 'lucide-react'
+import { Calendar, Video, Clock } from 'lucide-react'
 import { TelemedicineStats } from '@/app/components/telemedicine/TelemedicineStats'
 import { RecentSessions } from '@/app/components/telemedicine/RecentSessions'
 import { UpcomingSessions } from '@/app/components/telemedicine/UpcomingSessions'
@@ -66,7 +66,7 @@ export default async function TelemedicinePage() {
               </CardHeader>
               <CardContent>
                 <Suspense fallback={<div>Loading recent sessions...</div>}>
-                  <RecentSessions limit={5} userId={user.id} />
+                  <RecentSessions userId={user.id} />
                 </Suspense>
               </CardContent>
             </Card>
@@ -83,13 +83,43 @@ export default async function TelemedicinePage() {
               </CardHeader>
               <CardContent>
                 <Suspense fallback={<div>Loading upcoming sessions...</div>}>
-                  <UpcomingSessions limit={5} userId={user.id} />
+                  <UpcomingSessions userId={user.id} />
                 </Suspense>
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
 
-          {/* ... rest of the component remains the same ... */}
+        <TabsContent value="sessions">
+          <Card>
+            <CardHeader>
+              <CardTitle>All Sessions</CardTitle>
+              <CardDescription>
+                Complete history of your telemedicine consultations
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Suspense fallback={<div>Loading sessions...</div>}>
+                <RecentSessions userId={user.id} />
+              </Suspense>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="upcoming">
+          <Card>
+            <CardHeader>
+              <CardTitle>Upcoming Sessions</CardTitle>
+              <CardDescription>
+                Your scheduled telemedicine appointments
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Suspense fallback={<div>Loading upcoming sessions...</div>}>
+                <UpcomingSessions userId={user.id} />
+              </Suspense>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

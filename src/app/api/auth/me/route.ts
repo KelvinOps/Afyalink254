@@ -1,57 +1,80 @@
-// /app/api/auth/me/route.ts 
+// app/api/auth/logout/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyToken, ensureBasicPermissions, normalizeRole } from '@/app/lib/auth'
+import { auditActions } from '@/app/lib/audit'
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    // Get token from cookies
+    // Get user from token before clearing cookies
     const token = request.cookies.get('auth_token')?.value
+    let userName = 'Unknown'
     
-    if (!token) {
-      console.log('❌ /api/auth/me: No auth token found')
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      )
+    if (token) {
+      try {
+        const { verifyToken } = await import('@/app/lib/auth')
+        const user = await verifyToken(token)
+        if (user) {
+          userName = user.name
+          
+          // Get IP and user agent
+          const ipAddress = request.headers.get('x-forwarded-for') || 
+                           request.headers.get('x-real-ip') || 
+                           'unknown'
+          const userAgent = request.headers.get('user-agent') || undefined
+          
+          // Log logout action using queue (non-blocking)
+          auditActions.logLogout(
+            user.id,
+            user.role,
+            user.name,
+            ipAddress,
+            userAgent
+          )
+          
+          console.log('✅ Logout audit queued for:', user.email)
+        }
+      } catch (error) {
+        console.log('Unable to verify token during logout:', error)
+      }
     }
 
-    // Verify token
-    const user = await verifyToken(token)
-    
-    if (!user) {
-      console.log('❌ /api/auth/me: Token verification failed')
-      // Clear invalid cookies
-      const response = NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      )
-      response.cookies.delete('auth_token')
-      response.cookies.delete('user_role')
-      return response
-    }
-
-    console.log('✅ /api/auth/me: Token verified for user:', user.email, 'Role:', user.role)
-    console.log('📦 User from token:', {
-      email: user.email,
-      role: user.role,
-      permissionsCount: user.permissions?.length || 0
+    // Create response
+    const response = NextResponse.json({
+      message: 'Logout successful',
+      user: userName
     })
-    
-    // Ensure user has proper permissions based on role
-    const userWithPermissions = ensureBasicPermissions(user)
-    
-    console.log('🔐 /api/auth/me: After ensureBasicPermissions:')
-    console.log('   - Role:', userWithPermissions.role)
-    console.log('   - Permissions count:', userWithPermissions.permissions?.length || 0)
-    console.log('   - Sample permissions:', userWithPermissions.permissions?.slice(0, 5))
 
-    return NextResponse.json(userWithPermissions)
-    
+    // Clear all auth cookies
+    const cookiesToClear = [
+      'auth_token',
+      'user_role', 
+      'user_permissions',
+      'refreshToken',
+      'user_id',
+      'facility_id',
+      'county_id',
+      'redirect_url'
+    ]
+
+    cookiesToClear.forEach(cookieName => {
+      response.cookies.delete(cookieName)
+    })
+
+    console.log('✅ User logged out:', userName)
+
+    return response
+
   } catch (error) {
-    console.error('❌ Error in auth/me:', error)
+    console.error('💥 Logout error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Logout failed' },
       { status: 500 }
     )
   }
+}
+
+export async function GET() {
+  return NextResponse.json(
+    { error: 'Method not allowed' },
+    { status: 405 }
+  )
 }

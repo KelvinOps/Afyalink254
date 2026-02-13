@@ -3,7 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { verifyToken } from '@/app/lib/auth'
-import { auditLog } from '@/app/lib/audit'
+import { auditLog, AuditLogData } from '@/app/lib/audit'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -143,11 +144,11 @@ export async function POST(request: NextRequest) {
 
     const dispatchNumber = `DISP-${new Date().getFullYear()}-${String(dispatchCount + 1).padStart(6, '0')}`
 
-    // Prepare data for creation
-    const dispatchData: any = {
+    // Prepare data for creation with proper typing
+    const dispatchData: Prisma.DispatchLogCreateInput = {
       dispatchNumber,
       callerPhone,
-      callerName,
+      callerName: callerName || null,
       callerLocation,
       emergencyType,
       severity,
@@ -155,13 +156,14 @@ export async function POST(request: NextRequest) {
       patientCount: patientCount || 1,
       status: 'RECEIVED',
       callReceived: new Date(),
-      dispatcherId: user.id
+      dispatcher: {
+        connect: { id: user.id }
+      },
+      // Add optional location data
+      coordinates: coordinates || undefined,
+      landmark: landmark || undefined,
+      what3words: what3words || undefined
     }
-
-    // Add optional location data
-    if (coordinates) dispatchData.coordinates = coordinates
-    if (landmark) dispatchData.landmark = landmark
-    if (what3words) dispatchData.what3words = what3words
 
     // Create dispatch log
     const dispatch = await prisma.dispatchLog.create({
@@ -186,9 +188,8 @@ export async function POST(request: NextRequest) {
       } : null
     }
 
-    // Log the action - check what fields auditLog actually accepts
-    // Based on your schema, AuditLog has: action, entityType, entityId, userId, userRole, userName, description, changes, etc.
-    const auditData: any = {
+    // Log the action with proper typing
+    const auditData: AuditLogData = {
       action: 'CREATE',
       entityType: 'DISPATCH',
       entityId: dispatch.id,
@@ -199,7 +200,7 @@ export async function POST(request: NextRequest) {
         `${user.firstName} ${user.lastName}` : 
         user.name || user.email || 'Unknown',
       description: `Created new dispatch ${dispatchNumber} for ${emergencyType}`,
-      // Use changes field if details doesn't exist
+      // Use changes field for additional details
       changes: {
         callerPhone,
         callerLocation,
