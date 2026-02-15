@@ -1,4 +1,4 @@
-// app/api/dispatch/[id]/route.ts 
+// app/api/dispatch/[id]/route.ts
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
@@ -15,25 +15,6 @@ type DispatchUpdateValue =
   | Date
   | null
   | undefined
-
-// Define the Prisma DispatchLog update input type
-type DispatchLogUpdateInput = {
-  status?: string
-  ambulanceId?: string | null
-  countyAmbulanceId?: string | null
-  destinationHospitalId?: string | null
-  instructionsGiven?: string | null
-  outcome?: string | null
-  notes?: string | null
-  responseTime?: number | null
-  transportTime?: number | null
-  dispatched?: Date | null
-  arrivedOnScene?: Date | null
-  departedScene?: Date | null
-  arrivedHospital?: Date | null
-  cleared?: Date | null
-  updatedAt?: Date
-}
 
 // ── PATCH ────────────────────────────────────────────────────────────────────
 
@@ -80,9 +61,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Dispatch not found' }, { status: 404 })
     }
 
-    // Build update data object - only include fields that are actually being updated
-    const updateData: DispatchLogUpdateInput = {}
-    const timelineUpdates: DispatchLogUpdateInput = {}
+    // Build update data object with explicit value types
+    const updateData: Record<string, DispatchUpdateValue | AmbulanceStatus> = {}
+    const timelineUpdates: Record<string, Date> = {}
 
     // Update status with timeline tracking
     if (typeof status === 'string') {
@@ -112,28 +93,28 @@ export async function PATCH(
     }
 
     // Only add fields if they are explicitly provided in the request
-    // Use null to clear a field, omit if undefined (not sent)
+    // Use undefined to omit fields (Prisma expects undefined, not null, for omitted fields)
     if (ambulanceId !== undefined) {
-      updateData.ambulanceId = ambulanceId as string | null
+      updateData.ambulanceId = ambulanceId === null ? null : ambulanceId
     }
     
     if (countyAmbulanceId !== undefined) {
-      updateData.countyAmbulanceId = countyAmbulanceId as string | null
+      updateData.countyAmbulanceId = countyAmbulanceId === null ? null : countyAmbulanceId
     }
     
     // Handle hospitalId - assuming it's for destinationHospitalId
     if (hospitalId !== undefined) {
-      updateData.destinationHospitalId = hospitalId as string | null
+      updateData.destinationHospitalId = hospitalId === null ? null : hospitalId
     }
     
     if (instructions !== undefined) {
-      updateData.instructionsGiven = instructions as string | null
+      updateData.instructionsGiven = instructions === null ? null : instructions
     }
     if (outcome !== undefined) {
-      updateData.outcome = outcome as string | null
+      updateData.outcome = outcome === null ? null : outcome
     }
     if (notes !== undefined) {
-      updateData.notes = notes as string | null
+      updateData.notes = notes === null ? null : notes
     }
 
     // Calculate response times if we have timeline data
@@ -157,7 +138,7 @@ export async function PATCH(
     }
 
     // Combine all updates
-    const finalUpdateData: DispatchLogUpdateInput = {
+    const finalUpdateData = {
       ...updateData,
       ...timelineUpdates,
       updatedAt: new Date()

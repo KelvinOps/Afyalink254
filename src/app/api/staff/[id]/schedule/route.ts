@@ -5,10 +5,11 @@ import { auditLog, AuditAction } from '@/app/lib/audit'
 import { ShiftType, Prisma } from '@prisma/client'
 import { nanoid } from 'nanoid' // You'll need to install this: npm install nanoid
 
+// FIXED: params must be a Promise in Next.js 15+
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // Helper function to get session from your JWT token
@@ -48,12 +49,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // FIXED: Await params
+    const { id } = await params
+
     const { searchParams } = new URL(request.url)
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
     const staff = await prisma.staff.findUnique({
-      where: { id: params.id }
+      where: { id: id }
     })
 
     if (!staff) {
@@ -98,7 +102,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Build the where clause with proper typing
     const where: Prisma.StaffScheduleWhereInput = {
-      staffId: params.id,
+      staffId: id,
       isActive: true,
       ...(startDate && endDate && {
         OR: [
@@ -164,8 +168,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // FIXED: Await params
+    const { id } = await params
+
     const staff = await prisma.staff.findUnique({
-      where: { id: params.id }
+      where: { id: id }
     })
 
     if (!staff) {
@@ -229,7 +236,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Check for schedule conflicts
     const conflictingSchedule = await prisma.staffSchedule.findFirst({
       where: {
-        staffId: params.id,
+        staffId: id,
         isActive: true,
         OR: [
           {
@@ -247,22 +254,72 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const schedule = await prisma.staffSchedule.create({
-      data: {
-        scheduleNumber: generateScheduleNumber(), // Generate unique schedule number
-        staffId: params.id,
-        startTime: new Date(body.startTime),
-        endTime: new Date(body.endTime),
-        shiftType: body.shiftType,
-        facilityType: staff.facilityType, // Use staff's facility type
-        departmentId: body.departmentId,
-        hospitalId: staff.hospitalId,
-        healthCenterId: staff.healthCenterId,
-        dispensaryId: staff.dispensaryId,
-        notes: body.notes,
-        isActive: true,
-        createdById: session.id // Track who created the schedule
+    // FIXED: Use proper Prisma CreateInput with relations
+    const scheduleData: Prisma.StaffScheduleCreateInput = {
+      scheduleNumber: generateScheduleNumber(),
+      staff: {
+        connect: { id: id }
       },
+      startTime: new Date(body.startTime),
+      endTime: new Date(body.endTime),
+      shiftType: body.shiftType as ShiftType,
+      facilityType: staff.facilityType,
+      isActive: true,
+      isConfirmed: true
+    }
+
+    // Add optional department relation
+    if (body.departmentId) {
+      scheduleData.department = {
+        connect: { id: body.departmentId }
+      }
+    }
+
+    // Add facility relations based on staff's facility
+    if (staff.hospitalId) {
+      scheduleData.hospital = {
+        connect: { id: staff.hospitalId }
+      }
+    }
+
+    if (staff.healthCenterId) {
+      scheduleData.healthCenter = {
+        connect: { id: staff.healthCenterId }
+      }
+    }
+
+    if (staff.dispensaryId) {
+      scheduleData.dispensary = {
+        connect: { id: staff.dispensaryId }
+      }
+    }
+
+    // Add optional fields
+    if (body.title) scheduleData.title = body.title
+    if (body.description) scheduleData.description = body.description
+    if (body.notes) scheduleData.notes = body.notes
+    if (body.isRecurring !== undefined) scheduleData.isRecurring = body.isRecurring
+    if (body.recurrenceRule) scheduleData.recurrenceRule = body.recurrenceRule
+    if (body.recurrenceEnd) scheduleData.recurrenceEnd = new Date(body.recurrenceEnd)
+    if (body.isOverride !== undefined) scheduleData.isOverride = body.isOverride
+    if (body.originalScheduleId) scheduleData.originalScheduleId = body.originalScheduleId
+
+    // Add creator relation if session has staff ID
+    if (session.id) {
+      // Check if session.id corresponds to a staff member
+      const creatorStaff = await prisma.staff.findFirst({
+        where: { userId: session.id }
+      })
+      
+      if (creatorStaff) {
+        scheduleData.createdBy = {
+          connect: { id: creatorStaff.id }
+        }
+      }
+    }
+
+    const schedule = await prisma.staffSchedule.create({
+      data: scheduleData,
       include: {
         department: {
           select: {
@@ -277,6 +334,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             firstName: true,
             lastName: true,
             staffNumber: true
+          }
+        },
+        createdBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true
           }
         }
       }

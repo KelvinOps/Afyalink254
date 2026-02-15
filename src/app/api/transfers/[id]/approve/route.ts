@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/app/lib/prisma';
 import { verifyToken, ROLE_PERMISSIONS } from '@/app/lib/auth';
+import { Prisma } from '@prisma/client';
 
 const approveTransferSchema = z.object({
   bedReserved: z.boolean().optional().default(false),
@@ -12,7 +13,11 @@ const approveTransferSchema = z.object({
   notes: z.string().optional(),
 });
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+// FIXED: params must be a Promise in Next.js 15+
+export async function POST(
+  request: NextRequest, 
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     // Get authorization header
     const authHeader = request.headers.get('authorization');
@@ -39,8 +44,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // FIXED: Await params
+    const { id } = await params
+
     const transfer = await prisma.transfer.findUnique({
-      where: { id: params.id },
+      where: { id: id },
       include: {
         destinationHospital: true,
       },
@@ -76,18 +84,31 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const data = validationResult.data;
 
+    // Build update data with proper null handling
+    const updateData: Prisma.TransferUpdateInput = {
+      status: 'APPROVED',
+      approvedAt: new Date(),
+      bedReserved: data.bedReserved,
+      acceptedByName: data.acceptedByName || user.name,
+    }
+
+    // Handle optional nullable fields
+    if (data.bedNumber !== undefined) {
+      updateData.bedNumber = data.bedNumber || { set: null }
+    }
+    
+    if (data.acceptedByPhone !== undefined) {
+      updateData.acceptedByPhone = data.acceptedByPhone || { set: null }
+    }
+
+    // Handle approvedById - this should be a string, not a relation
+    if (user.id) {
+      updateData.approvedById = user.id
+    }
+
     const updatedTransfer = await prisma.transfer.update({
-      where: { id: params.id },
-      data: {
-        status: 'APPROVED',
-        approvedAt: new Date(),
-        approvedById: user.id,
-        bedReserved: data.bedReserved,
-        bedNumber: data.bedNumber,
-        acceptedByName: data.acceptedByName || user.name,
-        acceptedByPhone: data.acceptedByPhone,
-        notes: data.notes,
-      },
+      where: { id: id },
+      data: updateData,
       include: {
         patient: {
           select: {
@@ -109,7 +130,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       },
     });
 
-    // Create audit log
+    // Create audit log with proper typing
     await prisma.auditLog.create({
       data: {
         userId: user.id,
@@ -120,6 +141,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         entityId: transfer.id,
         description: `Approved transfer ${transfer.transferNumber} from ${updatedTransfer.originHospital?.name || 'Unknown'} to ${updatedTransfer.destinationHospital?.name || 'Unknown'}`,
         facilityId: user.facilityId,
+        timestamp: new Date(),
       }
     });
 

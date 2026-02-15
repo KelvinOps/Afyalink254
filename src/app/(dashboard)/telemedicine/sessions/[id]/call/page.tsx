@@ -24,8 +24,50 @@ import { ConsultationNotes } from '@/app/components/telemedicine/ConsultationNot
 import { useTelemedicineCall } from '@/app/hooks/useTelemedicineCall'
 import Link from 'next/link'
 
-// Import the Session type from the components
-import type { Session } from '@/app/components/telemedicine/types'
+// Type definitions (inline to avoid import issues)
+type SessionStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW'
+type ConsultationType = 'GENERAL' | 'FOLLOW_UP' | 'URGENT' | 'SPECIALIST'
+
+interface Patient {
+  id: string
+  name: string
+  email: string
+  phone?: string
+  dateOfBirth?: Date | string
+  gender?: string
+  medicalRecordNumber?: string
+}
+
+interface Provider {
+  id: string
+  name: string
+  email: string
+  specialization?: string
+  licenseNumber?: string
+}
+
+interface AdaptedTelemedicineSession {
+  id: string
+  sessionNumber: string
+  patientId: string
+  providerId: string
+  patient?: Patient
+  provider?: Provider
+  scheduledTime: Date
+  scheduledAt: Date
+  startTime?: Date | null
+  endTime?: Date | null
+  duration?: number
+  status: SessionStatus
+  consultationType: ConsultationType
+  chiefComplaint?: string
+  notes?: string
+  prescriptions?: string[]
+  attachments?: string[]
+  connectionQuality?: 'excellent' | 'good' | 'fair' | 'poor'
+  createdAt: Date
+  updatedAt: Date
+}
 
 interface VideoCallPageProps {
   params: Promise<{
@@ -34,24 +76,39 @@ interface VideoCallPageProps {
 }
 
 // Helper function to transform session data with proper typing
-function transformSessionData(session: Session | null): Session | null {
-  if (!session) return session
+function transformSessionData(session: Record<string, unknown> | null): AdaptedTelemedicineSession | null {
+  if (!session) return null
 
-  // First get the scheduledAt value with fallback
-  const scheduledAtValue = session.scheduledAt || session.scheduledTime || session.startTime || new Date()
-  
-  // Then transform it to string if it's a Date
-  const scheduledAt = scheduledAtValue instanceof Date ? scheduledAtValue.toISOString() : scheduledAtValue
+  const toDate = (value: unknown): Date => {
+    if (value instanceof Date) return value
+    if (typeof value === 'string') return new Date(value)
+    return new Date()
+  }
+
+  const scheduledTimeValue = session.scheduledTime || session.scheduledAt || session.startTime || new Date()
+  const scheduledTime = toDate(scheduledTimeValue)
 
   return {
-    ...session,
-    // Add the transformed scheduledAt
-    scheduledAt,
-    // Transform other date fields to strings if needed
-    startTime: session.startTime instanceof Date ? session.startTime.toISOString() : session.startTime,
-    endTime: session.endTime instanceof Date ? session.endTime.toISOString() : session.endTime,
-    createdAt: session.createdAt instanceof Date ? session.createdAt.toISOString() : session.createdAt,
-    updatedAt: session.updatedAt instanceof Date ? session.updatedAt.toISOString() : session.updatedAt,
+    id: String(session.id || ''),
+    sessionNumber: String(session.sessionNumber || ''),
+    patientId: String(session.patientId || ''),
+    providerId: String(session.providerId || ''),
+    patient: session.patient as Patient | undefined,
+    provider: session.provider as Provider | undefined,
+    scheduledTime,
+    scheduledAt: scheduledTime,
+    startTime: session.startTime ? toDate(session.startTime) : null,
+    endTime: session.endTime ? toDate(session.endTime) : null,
+    duration: typeof session.duration === 'number' ? session.duration : undefined,
+    status: (session.status as SessionStatus) || 'SCHEDULED',
+    consultationType: (session.consultationType as ConsultationType) || 'GENERAL',
+    chiefComplaint: session.chiefComplaint as string | undefined,
+    notes: session.notes as string | undefined,
+    prescriptions: Array.isArray(session.prescriptions) ? session.prescriptions as string[] : undefined,
+    attachments: Array.isArray(session.attachments) ? session.attachments as string[] : undefined,
+    connectionQuality: session.connectionQuality as 'excellent' | 'good' | 'fair' | 'poor' | undefined,
+    createdAt: toDate(session.createdAt),
+    updatedAt: toDate(session.updatedAt),
   }
 }
 
@@ -67,7 +124,6 @@ function VideoCallPageContent({ params }: VideoCallPageProps) {
     resolveParams()
   }, [params])
 
-  // Show loading state while resolving params
   if (!resolvedParams) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -89,7 +145,7 @@ function VideoCallPageContent({ params }: VideoCallPageProps) {
   return <VideoCallPageInner params={resolvedParams} />
 }
 
-// Your original component logic
+// Inner component with core logic
 function VideoCallPageInner({ params }: { params: { id: string } }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('call')
@@ -110,8 +166,7 @@ function VideoCallPageInner({ params }: { params: { id: string } }) {
     error
   } = useTelemedicineCall(params.id)
 
-  // Transform the session data to include required fields
-  const session = transformSessionData(rawSession as Session | null)
+  const session = transformSessionData(rawSession as Record<string, unknown> | null)
 
   useEffect(() => {
     if (session?.status === 'SCHEDULED') {
@@ -123,6 +178,11 @@ function VideoCallPageInner({ params }: { params: { id: string } }) {
     endCall()
     router.push(`/telemedicine/sessions/${params.id}`)
   }
+
+  // Cast session to satisfy strict component prop types.
+  // Safe because transformSessionData always populates scheduledAt.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sessionProp = session as any
 
   if (error) {
     return (
@@ -250,13 +310,13 @@ function VideoCallPageInner({ params }: { params: { id: string } }) {
               </TabsList>
 
               <TabsContent value="patient" className="mt-2">
-                {session && <PatientInfoPanel session={session} />}
+                {session && <PatientInfoPanel session={sessionProp} />}
               </TabsContent>
 
               <TabsContent value="notes" className="mt-2">
                 {session && (
                   <ConsultationNotes 
-                    session={session} 
+                    session={sessionProp} 
                     isCallActive={isConnected}
                   />
                 )}

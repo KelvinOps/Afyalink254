@@ -29,9 +29,15 @@ interface CountyAmbulanceUpdateData {
   mileage?: number
 }
 
+interface RouteParams {
+  params: Promise<{
+    id: string
+  }>
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -46,9 +52,12 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Await the params
+    const { id } = await params
+
     // Try to find in hospital ambulances first
     const ambulance = await prisma.ambulance.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         hospital: {
           select: {
@@ -82,7 +91,7 @@ export async function GET(
     // If not found in hospital ambulances, try county ambulances
     if (!ambulance) {
       const countyAmbulance = await prisma.countyAmbulance.findUnique({
-        where: { id: params.id },
+        where: { id },
         include: {
           county: {
             select: {
@@ -176,7 +185,7 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
     const authHeader = request.headers.get('authorization')
@@ -190,6 +199,9 @@ export async function PATCH(
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // Await the params
+    const { id } = await params
 
     const body = await request.json()
     const { 
@@ -206,7 +218,7 @@ export async function PATCH(
 
     // Try to update hospital ambulance first
     const ambulance = await prisma.ambulance.findUnique({
-      where: { id: params.id }
+      where: { id }
     })
 
     let ambulanceType: 'HOSPITAL' | 'COUNTY' = 'HOSPITAL'
@@ -235,13 +247,13 @@ export async function PATCH(
       }
 
       updatedAmbulance = await prisma.ambulance.update({
-        where: { id: params.id },
+        where: { id },
         data: updateData
       })
     } else {
       // Try county ambulance
       const countyAmbulance = await prisma.countyAmbulance.findUnique({
-        where: { id: params.id }
+        where: { id }
       })
       
       if (countyAmbulance) {
@@ -267,7 +279,7 @@ export async function PATCH(
         }
 
         updatedAmbulance = await prisma.countyAmbulance.update({
-          where: { id: params.id },
+          where: { id },
           data: countyUpdateData
         })
       } else {
@@ -284,7 +296,7 @@ export async function PATCH(
     await auditLog({
       action: AuditAction.UPDATE,
       entityType: ambulanceType === 'HOSPITAL' ? 'AMBULANCE' : 'COUNTY_AMBULANCE',
-      entityId: params.id,
+      entityId: id,
       userId: user.id,
       userRole: user.role,
       userName: user.name,

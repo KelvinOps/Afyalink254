@@ -453,6 +453,16 @@ function AddEditDepartmentDialog({ hospital, department, onSave, onCancel }: Add
     onSave(formData)
   }
 
+  // ── Fix: shadcn Select onValueChange always passes `string`.
+  // Accept string and cast to the narrower union type inside the handler.
+  const handleTypeChange = (value: string) => {
+    setFormData(prev => ({ ...prev, type: value as Department['type'] }))
+  }
+
+  const handleStatusChange = (value: string) => {
+    setFormData(prev => ({ ...prev, status: value as Department['status'] }))
+  }
+
   return (
     <DialogContent className="max-w-2xl">
       <DialogHeader>
@@ -482,7 +492,8 @@ function AddEditDepartmentDialog({ hospital, department, onSave, onCancel }: Add
 
           <div className="space-y-2">
             <Label htmlFor="type">Department Type *</Label>
-            <Select value={formData.type} onValueChange={(value: Department['type']) => setFormData(prev => ({ ...prev, type: value }))}>
+            {/* onValueChange receives string — use handleTypeChange to cast safely */}
+            <Select value={formData.type} onValueChange={handleTypeChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -506,7 +517,8 @@ function AddEditDepartmentDialog({ hospital, department, onSave, onCancel }: Add
 
           <div className="space-y-2">
             <Label htmlFor="status">Status *</Label>
-            <Select value={formData.status} onValueChange={(value: Department['status']) => setFormData(prev => ({ ...prev, status: value }))}>
+            {/* onValueChange receives string — use handleStatusChange to cast safely */}
+            <Select value={formData.status} onValueChange={handleStatusChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

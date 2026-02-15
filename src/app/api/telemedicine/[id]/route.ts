@@ -8,6 +8,7 @@ import {
 import { auditLog } from '@/app/lib/audit'
 import { getCurrentUser } from '@/app/lib/get-current-user'
 
+// Match exactly what the service layer expects
 const updateSessionSchema = z.object({
   diagnosis: z.string().optional(),
   recommendations: z.string().optional(),
@@ -23,13 +24,13 @@ const updateSessionSchema = z.object({
   videoQuality: z.number().min(1).max(5).optional(),
   imagesShared: z.array(z.string()).optional(),
   documentsShared: z.array(z.string()).optional(),
-  cancellationReason: z.string().optional(),
 })
 
+// FIXED: params must be a Promise in Next.js 15+
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -40,7 +41,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const telemedicineSession = await getTelemedicineSession(params.id)
+    // FIXED: Await params
+    const { id } = await params
+
+    const telemedicineSession = await getTelemedicineSession(id)
 
     if (!telemedicineSession) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
@@ -60,7 +64,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     await auditLog({
       action: 'READ',
       entityType: 'TELEMEDICINE_SESSION',
-      entityId: params.id,
+      entityId: id,
       userId: user.id,
       userRole: user.role,
       userName: user.name,
@@ -71,10 +75,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     console.error('Error fetching telemedicine session:', error)
     
+    // Get id for error logging
+    const { id } = await params
+    
     await auditLog({
       action: 'READ',
       entityType: 'TELEMEDICINE_SESSION',
-      entityId: params.id,
+      entityId: id,
       userId: 'unknown',
       userRole: 'SYSTEM',
       userName: 'API',
@@ -98,10 +105,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // FIXED: Await params
+    const { id } = await params
+
     const body = await request.json()
     const validatedData = updateSessionSchema.parse(body)
 
-    const existingSession = await getTelemedicineSession(params.id)
+    const existingSession = await getTelemedicineSession(id)
     if (!existingSession) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
@@ -115,13 +125,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    const updatedSession = await updateTelemedicineSession(params.id, validatedData)
+    const updatedSession = await updateTelemedicineSession(id, validatedData)
 
     // Audit log
     await auditLog({
       action: 'UPDATE',
       entityType: 'TELEMEDICINE_SESSION',
-      entityId: params.id,
+      entityId: id,
       userId: user.id,
       userRole: user.role,
       userName: user.name,
@@ -140,10 +150,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // Get id for error logging
+    const { id } = await params
+
     await auditLog({
       action: 'UPDATE',
       entityType: 'TELEMEDICINE_SESSION',
-      entityId: params.id,
+      entityId: id,
       userId: 'unknown',
       userRole: 'SYSTEM',
       userName: 'API',
@@ -167,7 +180,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const existingSession = await getTelemedicineSession(params.id)
+    // FIXED: Await params
+    const { id } = await params
+
+    const existingSession = await getTelemedicineSession(id)
     if (!existingSession) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
@@ -181,31 +197,34 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
+    // FIXED: Only use status field - the service layer doesn't support notes or cancellationReason
     // Only allow cancellation, not hard deletion
-    const cancelledSession = await updateTelemedicineSession(params.id, {
-      status: 'CANCELLED',
-      cancellationReason: 'Cancelled by user'
+    const cancelledSession = await updateTelemedicineSession(id, {
+      status: 'CANCELLED'
     })
 
-    // Audit log
+    // Audit log - record cancellation reason in audit log instead
     await auditLog({
       action: 'CANCEL',
       entityType: 'TELEMEDICINE_SESSION',
-      entityId: params.id,
+      entityId: id,
       userId: user.id,
       userRole: user.role,
       userName: user.name,
-      description: `Cancelled telemedicine session: ${cancelledSession.sessionNumber}`,
+      description: `Cancelled telemedicine session: ${cancelledSession.sessionNumber} - Reason: Cancelled by user`,
     })
 
     return NextResponse.json(cancelledSession)
   } catch (error) {
     console.error('Error cancelling telemedicine session:', error)
     
+    // Get id for error logging
+    const { id } = await params
+    
     await auditLog({
       action: 'CANCEL',
       entityType: 'TELEMEDICINE_SESSION',
-      entityId: params.id,
+      entityId: id,
       userId: 'unknown',
       userRole: 'SYSTEM',
       userName: 'API',

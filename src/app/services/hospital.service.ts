@@ -1,7 +1,7 @@
 import { prisma } from '@/app/lib/prisma'
-import { auditLog, AuditAction } from '@/app/lib/audit'
+import { queueAuditLog, AuditAction } from '@/app/lib/audit'
 import { User } from '@/app/lib/auth'
-import { Prisma } from '@prisma/client'
+import { Prisma, HospitalType, HospitalLevel, Ownership, PowerStatus, WaterStatus, OxygenStatus, InternetStatus, OperationalStatus } from '@prisma/client'
 
 // Define Prisma Json type properly
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
@@ -20,17 +20,17 @@ export interface HospitalCreateData {
   name: string
   code: string
   mflCode?: string | null
-  type: 'PUBLIC' | 'PRIVATE' | 'FAITH_BASED' | 'MISSION' | 'MILITARY' | 'SPECIALIZED' | 'NGO'
-  level: 'LEVEL_4' | 'LEVEL_5' | 'LEVEL_6'
-  ownership: 'COUNTY_GOVERNMENT' | 'NATIONAL_GOVERNMENT' | 'PRIVATE' | 'FAITH_BASED' | 'NGO' | 'COMMUNITY'
+  type: HospitalType
+  level: HospitalLevel
+  ownership: Ownership
   countyId: string
   subCounty?: string | null
   ward?: string | null
   address: string
   coordinates: JsonValue
   phone: string
-  emergencyPhone?: string | null
-  email?: string | null
+  emergencyPhone?: string | null  // Can be null in interface but will default to empty string
+  email?: string | null            // Can be null in interface but will default to empty string
   totalBeds: number
   functionalBeds: number
   icuBeds: number
@@ -45,17 +45,16 @@ export interface HospitalUpdateData {
   name?: string
   code?: string
   mflCode?: string | null
-  type?: 'PUBLIC' | 'PRIVATE' | 'FAITH_BASED' | 'MISSION' | 'MILITARY' | 'SPECIALIZED' | 'NGO'
-  level?: 'LEVEL_4' | 'LEVEL_5' | 'LEVEL_6'
-  ownership?: 'COUNTY_GOVERNMENT' | 'NATIONAL_GOVERNMENT' | 'PRIVATE' | 'FAITH_BASED' | 'NGO' | 'COMMUNITY'
-  countyId?: string
+  type?: HospitalType
+  level?: HospitalLevel
+  ownership?: Ownership
   subCounty?: string | null
   ward?: string | null
   address?: string
   coordinates?: JsonValue
   phone?: string
-  emergencyPhone?: string | null
-  email?: string | null
+  emergencyPhone?: string  // Changed: Remove null since it's required in schema
+  email?: string           // Changed: Remove null since it's required in schema
   totalBeds?: number
   functionalBeds?: number
   icuBeds?: number
@@ -64,23 +63,27 @@ export interface HospitalUpdateData {
   pediatricBeds?: number
   emergencyBeds?: number
   isolationBeds?: number
-  operationalStatus?: 'OPERATIONAL' | 'MAINTENANCE' | 'EMERGENCY_ONLY' | 'CLOSED'
+  operationalStatus?: OperationalStatus
   acceptingPatients?: boolean
   emergencyOnlyMode?: boolean
   isActive?: boolean
+  powerStatus?: PowerStatus
+  waterStatus?: WaterStatus
+  oxygenStatus?: OxygenStatus
+  internetStatus?: InternetStatus
 }
 
 export interface HospitalStatusUpdateData {
-  operationalStatus?: 'OPERATIONAL' | 'MAINTENANCE' | 'EMERGENCY_ONLY' | 'CLOSED'
+  operationalStatus?: OperationalStatus
   acceptingPatients?: boolean
   emergencyOnlyMode?: boolean
   availableBeds?: number
   availableIcuBeds?: number
   availableEmergencyBeds?: number
-  powerStatus?: 'GRID' | 'GENERATOR' | 'SOLAR' | 'NONE'
-  waterStatus?: 'AVAILABLE' | 'LIMITED' | 'NONE'
-  oxygenStatus?: 'AVAILABLE' | 'LIMITED' | 'NONE'
-  internetStatus?: 'AVAILABLE' | 'LIMITED' | 'NONE'
+  powerStatus?: PowerStatus
+  waterStatus?: WaterStatus
+  oxygenStatus?: OxygenStatus
+  internetStatus?: InternetStatus
 }
 
 export interface HospitalCapacityUpdateData {
@@ -119,11 +122,11 @@ export async function getHospitals(filters: HospitalFilters = {}) {
   }
 
   if (level) {
-    where.level = level
+    where.level = level as HospitalLevel
   }
 
   if (type) {
-    where.type = type
+    where.type = type as HospitalType
   }
 
   if (search) {
@@ -245,12 +248,14 @@ export async function createHospital(data: HospitalCreateData, user: User) {
     emergencyBeds: data.emergencyBeds,
     isolationBeds: data.isolationBeds,
     
-    // Optional fields with explicit null handling
+    // Required string fields - provide empty string as default for null values
+    emergencyPhone: data.emergencyPhone || '',
+    email: data.email || '',
+    
+    // Optional nullable fields with explicit null handling
     mflCode: data.mflCode ?? null,
     subCounty: data.subCounty ?? null,
     ward: data.ward ?? null,
-    emergencyPhone: data.emergencyPhone ?? null,
-    email: data.email ?? null,
     
     // Set default values for available beds
     availableBeds: data.functionalBeds,
@@ -300,7 +305,7 @@ export async function createHospital(data: HospitalCreateData, user: User) {
   })
 
   // Audit log
-  await auditLog({
+  await queueAuditLog({
     action: AuditAction.CREATE,
     entityType: 'HOSPITAL',
     entityId: hospital.id,
@@ -315,16 +320,68 @@ export async function createHospital(data: HospitalCreateData, user: User) {
 }
 
 export async function updateHospital(id: string, data: HospitalUpdateData, user: User) {
+  // Build Prisma update input with proper typing
+  const updateData: Prisma.HospitalUpdateInput = {}
+
+  // Handle required string fields (cannot be null)
+  if (data.name !== undefined) updateData.name = data.name
+  if (data.code !== undefined) updateData.code = data.code
+  if (data.phone !== undefined) updateData.phone = data.phone
+  if (data.emergencyPhone !== undefined) updateData.emergencyPhone = data.emergencyPhone
+  if (data.email !== undefined) updateData.email = data.email
+  if (data.address !== undefined) updateData.address = data.address
+  
+  // Handle optional nullable string fields (can be set to null)
+  if (data.mflCode !== undefined) {
+    updateData.mflCode = data.mflCode === null ? { set: null } : data.mflCode
+  }
+  if (data.subCounty !== undefined) {
+    updateData.subCounty = data.subCounty === null ? { set: null } : data.subCounty
+  }
+  if (data.ward !== undefined) {
+    updateData.ward = data.ward === null ? { set: null } : data.ward
+  }
+  
+  // Handle enums
+  if (data.type !== undefined) updateData.type = data.type
+  if (data.level !== undefined) updateData.level = data.level
+  if (data.ownership !== undefined) updateData.ownership = data.ownership
+  if (data.operationalStatus !== undefined) updateData.operationalStatus = data.operationalStatus
+  if (data.powerStatus !== undefined) updateData.powerStatus = data.powerStatus
+  if (data.waterStatus !== undefined) updateData.waterStatus = data.waterStatus
+  if (data.oxygenStatus !== undefined) updateData.oxygenStatus = data.oxygenStatus
+  if (data.internetStatus !== undefined) updateData.internetStatus = data.internetStatus
+  
+  // Handle JSON field
+  if (data.coordinates !== undefined) {
+    updateData.coordinates = data.coordinates as Prisma.InputJsonValue
+  }
+  
+  // Handle numbers
+  if (data.totalBeds !== undefined) updateData.totalBeds = data.totalBeds
+  if (data.functionalBeds !== undefined) updateData.functionalBeds = data.functionalBeds
+  if (data.icuBeds !== undefined) updateData.icuBeds = data.icuBeds
+  if (data.hdUnitBeds !== undefined) updateData.hdUnitBeds = data.hdUnitBeds
+  if (data.maternityBeds !== undefined) updateData.maternityBeds = data.maternityBeds
+  if (data.pediatricBeds !== undefined) updateData.pediatricBeds = data.pediatricBeds
+  if (data.emergencyBeds !== undefined) updateData.emergencyBeds = data.emergencyBeds
+  if (data.isolationBeds !== undefined) updateData.isolationBeds = data.isolationBeds
+  
+  // Handle booleans
+  if (data.acceptingPatients !== undefined) updateData.acceptingPatients = data.acceptingPatients
+  if (data.emergencyOnlyMode !== undefined) updateData.emergencyOnlyMode = data.emergencyOnlyMode
+  if (data.isActive !== undefined) updateData.isActive = data.isActive
+
   const hospital = await prisma.hospital.update({
     where: { id },
-    data,
+    data: updateData,
     include: {
       county: true,
     },
   })
 
   // Audit log
-  await auditLog({
+  await queueAuditLog({
     action: AuditAction.UPDATE,
     entityType: 'HOSPITAL',
     entityId: hospital.id,
@@ -344,7 +401,7 @@ export async function deleteHospital(id: string, user: User) {
   })
 
   // Audit log
-  await auditLog({
+  await queueAuditLog({
     action: AuditAction.DELETE,
     entityType: 'HOSPITAL',
     entityId: hospital.id,
@@ -368,7 +425,7 @@ export async function updateHospitalStatus(id: string, data: HospitalStatusUpdat
   })
 
   // Audit log
-  await auditLog({
+  await queueAuditLog({
     action: AuditAction.UPDATE,
     entityType: 'HOSPITAL',
     entityId: hospital.id,
@@ -413,7 +470,7 @@ export async function updateHospitalCapacity(id: string, data: HospitalCapacityU
   })
 
   // Audit log
-  await auditLog({
+  await queueAuditLog({
     action: AuditAction.UPDATE,
     entityType: 'HOSPITAL',
     entityId: hospital.id,

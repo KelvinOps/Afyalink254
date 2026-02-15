@@ -17,9 +17,9 @@ const capacityUpdateSchema = z.object({
 })
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // Helper function to get user from request
@@ -54,7 +54,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const capacity = await getHospitalCapacity(params.id)
+    // Await the params
+    const { id } = await params
+
+    const capacity = await getHospitalCapacity(id)
 
     if (!capacity) {
       return NextResponse.json({ error: 'Hospital not found' }, { status: 404 })
@@ -89,12 +92,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Await the params
+    const { id } = await params
+
     const body = await request.json()
     
     // Validate input
     const validatedData = capacityUpdateSchema.parse(body)
 
-    const capacity = await updateHospitalCapacity(params.id, validatedData, user)
+    const capacity = await updateHospitalCapacity(id, validatedData, user)
 
     return NextResponse.json(capacity)
   } catch (error) {

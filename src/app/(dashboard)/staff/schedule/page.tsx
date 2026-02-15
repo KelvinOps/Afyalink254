@@ -3,7 +3,7 @@ import { StaffService } from '@/app/services/staff.service'
 import { verifyToken, hasPermission, createUserObject } from '@/app/lib/auth'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
-import { Staff } from '@/app/types/staff.types'
+import type { Staff } from '@/app/types/staff.types'
 
 async function getSession() {
   const cookieStore = await cookies()
@@ -17,7 +17,7 @@ async function getSession() {
   return payload ? createUserObject(payload) : null
 }
 
-export default async function StaffPage() {
+export default async function StaffSchedulePage() {
   const session = await getSession()
   
   if (!session) {
@@ -30,7 +30,7 @@ export default async function StaffPage() {
   }
 
   let initialStaff: Staff[] = []
-  let initialPagination = null
+  let initialPagination: { page: number; limit: number; total: number; pages: number } | undefined = undefined
 
   try {
     // For hospital admins, only show staff from their hospital
@@ -42,7 +42,7 @@ export default async function StaffPage() {
       hospitalId
     })
     
-    initialStaff = result.staff as Staff[] || []
+    initialStaff = result.staff || []
     initialPagination = result.pagination
   } catch (error) {
     console.error('Error fetching initial staff data:', error)

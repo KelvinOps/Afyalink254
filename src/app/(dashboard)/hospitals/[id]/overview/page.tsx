@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // hospitals/[id]/overview/page.tsx
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
@@ -7,7 +8,10 @@ import { getHospitalById } from '@/app/services/hospital.service'
 import { verifyToken, createUserObject, ensureBasicPermissions } from '@/app/lib/auth'
 import type { User } from '@/app/lib/auth'
 import { cookies } from 'next/headers'
-import type { JsonValue } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+
+// FIXED: Import Prisma and create type alias
+type JsonValue = Prisma.JsonValue
 
 // Define params as a Promise for Next.js 15
 type PageProps = {
@@ -51,88 +55,55 @@ interface County {
 interface PerformanceMetric {
   id: string;
   countyId: string | null;
-  hospitalId: string;
+  hospitalId: string | null;
   date: Date;
   period: MetricPeriod;
-  
-  // Bed metrics
-  bedOccupancyRate: number | null;
-  totalBeds: number | null;
-  availableBeds: number | null;
-  occupiedBeds: number | null;
-  icuBeds: number | null;
-  availableIcuBeds: number | null;
-  hduBeds: number | null;
-  availableHduBeds: number | null;
-  highCareBeds: number | null;
-  availableHighCareBeds: number | null;
-  
-  // Wait times
+  nationalLevel: boolean;
+  totalPatients: number;
+  emergencyVisits: number;
+  outpatientVisits: number;
+  admissions: number;
+  discharges: number;
+  deaths: number;
+  referralsOut: number;
+  referralsIn: number;
+  triageLevel1: number;
+  triageLevel2: number;
+  triageLevel3: number;
+  triageLevel4: number;
+  triageLevel5: number;
   avgWaitTime: number | null;
-  maxWaitTime: number | null;
-  triageWaitTime: number | null;
-  registrationWaitTime: number | null;
-  consultationWaitTime: number | null;
-  pharmacyWaitTime: number | null;
-  labWaitTime: number | null;
-  radiologyWaitTime: number | null;
-  admissionWaitTime: number | null;
-  
-  // Patient volume
-  patientVolume: number | null;
-  newPatients: number | null;
-  revisitPatients: number | null;
-  emergencyVisits: number | null;
-  outpatientVisits: number | null;
-  inpatientAdmissions: number | null;
-  inpatientDischarges: number | null;
-  
-  // Outcomes
-  patientSatisfaction: number | null;
-  mortalityRate: number | null;
-  readmissionRate: number | null;
-  infectionRate: number | null;
-  
-  // Emergency metrics
-  emergencyResponseTime: number | null;
-  sceneResponseTime: number | null;
-  hospitalResponseTime: number | null;
-  totalEmergencies: number | null;
-  massCasualtyIncidents: number | null;
-  
-  // Telemedicine
-  telemedicineSessions: number | null;
-  virtualConsultations: number | null;
-  
-  // Staff metrics
-  totalStaff: number | null;
-  doctorCount: number | null;
-  nurseCount: number | null;
-  clinicalOfficerCount: number | null;
-  specialistCount: number | null;
-  supportStaffCount: number | null;
-  staffAttritionRate: number | null;
-  staffSatisfaction: number | null;
-  
-  // Resource metrics
-  totalResources: number | null;
-  criticalResources: number | null;
-  resourceUtilization: number | null;
-  ambulanceUtilization: number | null;
-  bloodSupplyDays: number | null;
-  medicineStockoutDays: number | null;
-  
-  // Financial metrics
-  operationalCost: number | null;
-  revenue: number | null;
-  shaClaimsSubmitted: number | null;
-  shaClaimsApproved: number | null;
-  shaClaimsValue: number | null;
-  shaReimbursementRate: number | null;
-  
-  // Additional fields
+  medianWaitTime: number | null;
+  avgTriageTime: number | null;
+  avgTreatmentTime: number | null;
+  avgDoctorWaitTime: number | null;
+  patientsSeen: number;
+  patientsLeftBeforeTreatment: number;
+  readmissions30Days: number;
+  avgBedOccupancy: number | null;
+  avgICUOccupancy: number | null;
+  avgEmergencyOccupancy: number | null;
+  bedTurnoverRate: number | null;
+  transfersRequested: number;
+  transfersApproved: number;
+  transfersRejected: number;
+  avgTransferTime: number | null;
+  ambulanceDispatches: number;
+  avgResponseTime: number | null;
+  avgTransportTime: number | null;
+  telemedicineSessions: number;
+  telemedicineSuccessRate: number | null;
+  claimsSubmitted: number;
+  claimsApproved: number;
+  claimsRejected: number;
+  claimsPending: number;
+  totalClaimValue: number;
+  totalApprovedValue: number;
+  avgClaimProcessingDays: number | null;
+  doctorsOnDuty: number | null;
+  nursesOnDuty: number | null;
+  avgCaseloadPerDoctor: number | null;
   criticalShortages: JsonValue;
-  
   createdAt: Date;
   updatedAt: Date;
 }
@@ -140,67 +111,120 @@ interface PerformanceMetric {
 interface Department {
   id: string;
   name: string;
-  code: string | null;
+  type: string;
   hospitalId: string;
-  description: string | null;
-  headOfDepartment: string | null;
-  contactPhone: string | null;
-  contactEmail: string | null;
-  totalBeds: number | null;
-  availableBeds: number | null;
-  isActive: boolean | null;
+  hodName: string | null;
+  hodPhone: string | null;
+  totalBeds: number;
+  availableBeds: number;
+  occupancyRate: number;
+  isActive: boolean;
+  isAcceptingPatients: boolean;
   createdAt: Date;
   updatedAt: Date;
+  staff?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    role: string;
+  }[];
 }
 
 interface Staff {
   id: string;
-  employeeId: string | null;
+  userId: string;
+  staffNumber: string;
   firstName: string;
   lastName: string;
-  title: string | null;
-  department: string | null;
+  email: string;
+  phone: string;
+  nationalId: string | null;
+  role: string;
   specialization: string | null;
-  phoneNumber: string | null;
-  email: string | null;
-  hireDate: Date | null;
+  licenseNumber: string | null;
+  licensingBody: string | null;
+  yearsOfExperience: number | null;
+  facilityType: string;
+  hospitalId: string | null;
+  healthCenterId: string | null;
+  dispensaryId: string | null;
+  departmentId: string | null;
+  employmentType: string;
+  contractType: string;
+  hireDate: Date;
+  monthlySalary: number | null;
   lastPaidDate: Date | null;
+  pendingSalaryMonths: number;
+  isActive: boolean;
+  isOnDuty: boolean;
   shiftStart: Date | null;
   shiftEnd: Date | null;
-  isActive: boolean | null;
-  hospitalId: string;
+  currentCaseload: number;
+  maxCaseload: number;
+  passwordHash: string | null;
+  lastLoginAt: Date | null;
+  telemedicineEnabled: boolean;
+  canGiveRemoteConsultations: boolean;
   createdAt: Date;
   updatedAt: Date;
+  department?: {
+    name: string;
+    type: string;
+  } | null;
 }
 
 interface Resource {
   id: string;
   name: string;
   type: string;
-  category: string | null;
-  quantity: number | null;
-  unit: string | null;
-  status: string | null;
-  location: string | null;
+  category: string;
+  hospitalId: string;
+  departmentId: string | null;
+  totalCapacity: number;
+  availableCapacity: number;
+  reservedCapacity: number;
+  inUseCapacity: number;
+  unit: string;
+  minimumLevel: number | null;
+  criticalLevel: number | null;
+  reorderLevel: number | null;
+  maxCapacity: number | null;
+  status: string;
+  isOperational: boolean;
+  isCritical: boolean;
+  isShared: boolean;
   lastMaintenance: Date | null;
   nextMaintenance: Date | null;
+  maintenanceSchedule: string | null;
+  maintenanceNotes: string | null;
+  supplier: string | null;
+  supplierContact: string | null;
   lastRestock: Date | null;
+  lastRestockQuantity: number | null;
   expiryDate: Date | null;
-  hospitalId: string;
+  batchNumber: string | null;
+  unitCost: number | null;
+  totalValue: number | null;
+  specifications: JsonValue;
+  notes: string | null;
+  usageHistory: JsonValue[];
   createdAt: Date;
   updatedAt: Date;
+  department?: {
+    name: string;
+  } | null;
 }
 
 interface Transfer {
   id: string;
-  transferNumber: string | null;
+  transferNumber: string;
   patientId: string;
   originHospitalId: string;
   destinationHospitalId: string;
   status: string;
   priority: string | null;
-  reason: string | null;
-  requestedAt: Date | null;
+  reason: string;
+  requestedAt: Date;
   approvedAt: Date | null;
   rejectedAt: Date | null;
   departureTime: Date | null;
@@ -215,45 +239,71 @@ interface Hospital {
   id: string;
   name: string;
   code: string | null;
-  registrationNumber: string | null;
+  mflCode: string | null;
   type: string | null;
   level: string | null;
   ownership: string | null;
   countyId: string | null;
   county: County | null;
-  location: string | null;
-  address: string | null;
-  phoneNumber: string | null;
-  alternativePhone: string | null;
-  email: string | null;
+  subCounty: string | null;
+  ward: string | null;
+  constituency: string | null;
+  address: string;
+  coordinates: JsonValue;
+  what3words: string | null;
+  elevation: number | null;
+  accessibilityScore: number;
+  distanceToNearestTarmac: number | null;
+  reachableInRainySeason: boolean;
+  phone: string;
+  emergencyPhone: string;
+  ambulancePhone: string | null;
+  email: string;
   website: string | null;
-  totalBeds: number | null;
-  availableBeds: number | null;
-  occupiedBeds: number | null;
-  icuBeds: number | null;
-  availableIcuBeds: number | null;
-  hduBeds: number | null;
-  availableHduBeds: number | null;
-  highCareBeds: number | null;
-  availableHighCareBeds: number | null;
-  ambulanceCount: number | null;
-  availableAmbulances: number | null;
-  lastBedUpdate: Date | null;
-  isShaEnabled: boolean | null;
+  totalBeds: number;
+  functionalBeds: number;
+  icuBeds: number;
+  hdUnitBeds: number;
+  maternityBeds: number;
+  pediatricBeds: number;
+  emergencyBeds: number;
+  isolationBeds: number;
+  availableBeds: number;
+  availableIcuBeds: number;
+  availableEmergencyBeds: number;
+  lastBedUpdate: Date;
+  powerStatus: string;
+  backupPower: boolean;
+  waterStatus: string;
+  oxygenStatus: string;
+  internetStatus: string;
+  shaContracted: boolean;
+  shaFacilityCode: string | null;
   shaActivationDate: Date | null;
-  isActive: boolean | null;
-  status: string | null;
-  accreditationStatus: string | null;
-  accreditationExpiry: Date | null;
-  latitude: number | null;
-  longitude: number | null;
-  operatingHours: string | null;
-  emergencyServices: boolean | null;
-  hasPharmacy: boolean | null;
-  hasLaboratory: boolean | null;
-  hasRadiology: boolean | null;
-  hasBloodBank: boolean | null;
-  hasMorgue: boolean | null;
+  kephLevel: string | null;
+  services: string[];
+  specializations: string[];
+  has24HourService: boolean;
+  hasAmbulance: boolean;
+  hasBloodBank: boolean;
+  hasLaboratory: boolean;
+  hasRadiology: boolean;
+  hasCTScan: boolean;
+  hasMRI: boolean;
+  hasDialysis: boolean;
+  hasPharmacy: boolean;
+  hasOxygenPlant: boolean;
+  hasMortuary: boolean;
+  telemedicineEnabled: boolean;
+  canReceiveReferrals: boolean;
+  canGiveConsultations: boolean;
+  isActive: boolean;
+  operationalStatus: string;
+  acceptingPatients: boolean;
+  emergencyOnlyMode: boolean;
+  managedByCounty: boolean;
+  autonomyLevel: string;
+  hospitalBoard: string | null;
   createdAt: Date;
   updatedAt: Date;
   
@@ -268,12 +318,12 @@ interface Hospital {
 
 // ============== TRANSFORMATION FUNCTION ==============
 
-interface SerializedHospital extends Omit<Hospital, 
+// FIXED: SerializedHospital should match Hospital structure exactly, just with serialized dates
+type SerializedHospital = Omit<Hospital, 
   | 'createdAt' 
   | 'updatedAt' 
   | 'lastBedUpdate' 
-  | 'shaActivationDate' 
-  | 'accreditationExpiry'
+  | 'shaActivationDate'
   | 'county'
   | 'performanceMetrics'
   | 'departments'
@@ -281,70 +331,83 @@ interface SerializedHospital extends Omit<Hospital,
   | 'resources'
   | 'originTransfers'
   | 'destinationTransfers'
-> {
-  createdAt: string | null;
-  updatedAt: string | null;
-  lastBedUpdate: string | null;
+> & {
+  createdAt: string;
+  updatedAt: string;
+  lastBedUpdate: string;
   shaActivationDate: string | null;
-  accreditationExpiry: string | null;
   
   // Nested relations with serialized dates
   county: (Omit<County, 'createdAt' | 'updatedAt'> & {
-    createdAt: string | null;
-    updatedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
   }) | null;
   
   performanceMetrics: (Omit<PerformanceMetric, 'date' | 'createdAt' | 'updatedAt'> & {
-    date: string | null;
-    createdAt: string | null;
-    updatedAt: string | null;
+    date: string;
+    createdAt: string;
+    updatedAt: string;
   })[];
   
-  departments: (Omit<Department, 'createdAt' | 'updatedAt'> & {
-    createdAt: string | null;
-    updatedAt: string | null;
+  departments: (Omit<Department, 'createdAt' | 'updatedAt' | 'staff'> & {
+    createdAt: string;
+    updatedAt: string;
+    staff: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      role: string;
+    }[];
   })[];
   
-  staff: (Omit<Staff, 'hireDate' | 'lastPaidDate' | 'shiftStart' | 'shiftEnd' | 'createdAt' | 'updatedAt'> & {
-    hireDate: string | null;
+  staff: (Omit<Staff, 'hireDate' | 'lastPaidDate' | 'shiftStart' | 'shiftEnd' | 'createdAt' | 'updatedAt' | 'lastLoginAt' | 'department'> & {
+    hireDate: string;
     lastPaidDate: string | null;
     shiftStart: string | null;
     shiftEnd: string | null;
-    createdAt: string | null;
-    updatedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    lastLoginAt: string | null;
+    department: {
+      name: string;
+      type: string;
+    } | null;
   })[];
   
-  resources: (Omit<Resource, 'lastMaintenance' | 'nextMaintenance' | 'lastRestock' | 'expiryDate' | 'createdAt' | 'updatedAt'> & {
+  resources: (Omit<Resource, 'lastMaintenance' | 'nextMaintenance' | 'lastRestock' | 'expiryDate' | 'createdAt' | 'updatedAt' | 'department'> & {
     lastMaintenance: string | null;
     nextMaintenance: string | null;
     lastRestock: string | null;
     expiryDate: string | null;
-    createdAt: string | null;
-    updatedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    department: {
+      name: string;
+    } | null;
   })[];
   
   originTransfers: (Omit<Transfer, 'requestedAt' | 'approvedAt' | 'rejectedAt' | 'departureTime' | 'arrivalTime' | 'completedAt' | 'cancelledAt' | 'createdAt' | 'updatedAt'> & {
-    requestedAt: string | null;
+    requestedAt: string;
     approvedAt: string | null;
     rejectedAt: string | null;
     departureTime: string | null;
     arrivalTime: string | null;
     completedAt: string | null;
     cancelledAt: string | null;
-    createdAt: string | null;
-    updatedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
   })[];
   
   destinationTransfers: (Omit<Transfer, 'requestedAt' | 'approvedAt' | 'rejectedAt' | 'departureTime' | 'arrivalTime' | 'completedAt' | 'cancelledAt' | 'createdAt' | 'updatedAt'> & {
-    requestedAt: string | null;
+    requestedAt: string;
     approvedAt: string | null;
     rejectedAt: string | null;
     departureTime: string | null;
     arrivalTime: string | null;
     completedAt: string | null;
     cancelledAt: string | null;
-    createdAt: string | null;
-    updatedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
   })[];
 }
 
@@ -356,34 +419,36 @@ function transformHospitalDates(hospital: Hospital | null): SerializedHospital |
   return {
     ...hospital,
     // Transform main hospital date fields
-    lastBedUpdate: hospital.lastBedUpdate?.toISOString() || null,
+    lastBedUpdate: hospital.lastBedUpdate.toISOString(),
     shaActivationDate: hospital.shaActivationDate?.toISOString() || null,
-    accreditationExpiry: hospital.accreditationExpiry?.toISOString() || null,
-    createdAt: hospital.createdAt?.toISOString() || null,
-    updatedAt: hospital.updatedAt?.toISOString() || null,
+    createdAt: hospital.createdAt.toISOString(),
+    updatedAt: hospital.updatedAt.toISOString(),
     
     // Transform nested relations
     performanceMetrics: hospital.performanceMetrics?.map((metric) => ({
       ...metric,
-      date: metric.date?.toISOString() || null,
-      createdAt: metric.createdAt?.toISOString() || null,
-      updatedAt: metric.updatedAt?.toISOString() || null,
+      date: metric.date.toISOString(),
+      createdAt: metric.createdAt.toISOString(),
+      updatedAt: metric.updatedAt.toISOString(),
     })) || [],
     
     departments: hospital.departments?.map((dept) => ({
       ...dept,
-      createdAt: dept.createdAt?.toISOString() || null,
-      updatedAt: dept.updatedAt?.toISOString() || null,
+      createdAt: dept.createdAt.toISOString(),
+      updatedAt: dept.updatedAt.toISOString(),
+      staff: dept.staff || [],
     })) || [],
     
     staff: hospital.staff?.map((staffMember) => ({
       ...staffMember,
-      hireDate: staffMember.hireDate?.toISOString() || null,
+      hireDate: staffMember.hireDate.toISOString(),
       lastPaidDate: staffMember.lastPaidDate?.toISOString() || null,
       shiftStart: staffMember.shiftStart?.toISOString() || null,
       shiftEnd: staffMember.shiftEnd?.toISOString() || null,
-      createdAt: staffMember.createdAt?.toISOString() || null,
-      updatedAt: staffMember.updatedAt?.toISOString() || null,
+      lastLoginAt: staffMember.lastLoginAt?.toISOString() || null,
+      createdAt: staffMember.createdAt.toISOString(),
+      updatedAt: staffMember.updatedAt.toISOString(),
+      department: staffMember.department ?? null,
     })) || [],
     
     resources: hospital.resources?.map((resource) => ({
@@ -392,40 +457,41 @@ function transformHospitalDates(hospital: Hospital | null): SerializedHospital |
       nextMaintenance: resource.nextMaintenance?.toISOString() || null,
       lastRestock: resource.lastRestock?.toISOString() || null,
       expiryDate: resource.expiryDate?.toISOString() || null,
-      createdAt: resource.createdAt?.toISOString() || null,
-      updatedAt: resource.updatedAt?.toISOString() || null,
+      createdAt: resource.createdAt.toISOString(),
+      updatedAt: resource.updatedAt.toISOString(),
+      department: resource.department ?? null,
     })) || [],
     
     county: hospital.county ? {
       ...hospital.county,
-      createdAt: hospital.county.createdAt?.toISOString() || null,
-      updatedAt: hospital.county.updatedAt?.toISOString() || null,
+      createdAt: hospital.county.createdAt.toISOString(),
+      updatedAt: hospital.county.updatedAt.toISOString(),
     } : null,
     
     originTransfers: hospital.originTransfers?.map((transfer) => ({
       ...transfer,
-      requestedAt: transfer.requestedAt?.toISOString() || null,
+      requestedAt: transfer.requestedAt.toISOString(),
       approvedAt: transfer.approvedAt?.toISOString() || null,
       rejectedAt: transfer.rejectedAt?.toISOString() || null,
       departureTime: transfer.departureTime?.toISOString() || null,
       arrivalTime: transfer.arrivalTime?.toISOString() || null,
       completedAt: transfer.completedAt?.toISOString() || null,
       cancelledAt: transfer.cancelledAt?.toISOString() || null,
-      createdAt: transfer.createdAt?.toISOString() || null,
-      updatedAt: transfer.updatedAt?.toISOString() || null,
+      createdAt: transfer.createdAt.toISOString(),
+      updatedAt: transfer.updatedAt.toISOString(),
     })) || [],
     
     destinationTransfers: hospital.destinationTransfers?.map((transfer) => ({
       ...transfer,
-      requestedAt: transfer.requestedAt?.toISOString() || null,
+      requestedAt: transfer.requestedAt.toISOString(),
       approvedAt: transfer.approvedAt?.toISOString() || null,
       rejectedAt: transfer.rejectedAt?.toISOString() || null,
       departureTime: transfer.departureTime?.toISOString() || null,
       arrivalTime: transfer.arrivalTime?.toISOString() || null,
       completedAt: transfer.completedAt?.toISOString() || null,
       cancelledAt: transfer.cancelledAt?.toISOString() || null,
-      createdAt: transfer.createdAt?.toISOString() || null,
-      updatedAt: transfer.updatedAt?.toISOString() || null,
+      createdAt: transfer.createdAt.toISOString(),
+      updatedAt: transfer.updatedAt.toISOString(),
     })) || [],
   }
 }
@@ -494,7 +560,7 @@ export default async function HospitalOverviewPage(props: PageProps) {
       <HospitalTabs hospitalId={hospital.id} activeTab="overview" />
       
       <HospitalOverview 
-        hospital={transformedHospital} 
+        hospital={transformedHospital as any}
         user={user}
         showDetailedView={true}
       />

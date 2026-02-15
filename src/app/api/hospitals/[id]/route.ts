@@ -23,11 +23,11 @@ const updateHospitalSchema = z.object({
   totalBeds: z.number().min(0).optional(),
   functionalBeds: z.number().min(0).optional(),
   icuBeds: z.number().min(0).optional(),
-  hdUnitBeds: z.number().min(0).optional(), // Added missing field
+  hdUnitBeds: z.number().min(0).optional(),
   maternityBeds: z.number().min(0).optional(),
   pediatricBeds: z.number().min(0).optional(),
   emergencyBeds: z.number().min(0).optional(),
-  isolationBeds: z.number().min(0).optional(), // Added missing field
+  isolationBeds: z.number().min(0).optional(),
   powerStatus: z.enum(['GRID', 'GENERATOR', 'SOLAR', 'HYBRID', 'NONE', 'UNSTABLE']).optional(),
   waterStatus: z.enum(['AVAILABLE', 'LIMITED', 'UNAVAILABLE', 'RATIONED']).optional(),
   oxygenStatus: z.enum(['AVAILABLE', 'LIMITED', 'CRITICAL', 'UNAVAILABLE']).optional(),
@@ -37,10 +37,12 @@ const updateHospitalSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
+type UpdateHospitalInput = z.infer<typeof updateHospitalSchema>
+
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // Helper function to authenticate requests
@@ -84,7 +86,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Forbidden - Insufficient permissions' }, { status: 403 })
     }
 
-    const hospital = await getHospitalById(params.id)
+    // Await the params
+    const { id } = await params
+
+    const hospital = await getHospitalById(id)
 
     if (!hospital) {
       return NextResponse.json({ error: 'Hospital not found' }, { status: 404 })
@@ -121,12 +126,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }, { status: 403 })
     }
 
+    // Await the params
+    const { id } = await params
+
     const body = await request.json()
     
     // Validate input
     const validatedData = updateHospitalSchema.parse(body)
 
-    const hospital = await updateHospital(params.id, validatedData, user)
+    // Type assertion to the inferred type - properly typed
+    const hospital = await updateHospital(id, validatedData as UpdateHospitalInput, user)
 
     return NextResponse.json(hospital)
   } catch (error) {
@@ -161,7 +170,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       }, { status: 403 })
     }
 
-    await deleteHospital(params.id, user)
+    // Await the params
+    const { id } = await params
+
+    await deleteHospital(id, user)
 
     return NextResponse.json({ message: 'Hospital deleted successfully' })
   } catch (error) {

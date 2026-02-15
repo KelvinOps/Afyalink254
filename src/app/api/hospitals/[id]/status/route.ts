@@ -18,10 +18,11 @@ const statusUpdateSchema = z.object({
   notes: z.string().optional(),
 })
 
-interface RouteParams {
-  params: {
+// Updated type definition for Next.js 15+
+type RouteContext = {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // Helper function to authenticate requests
@@ -52,8 +53,14 @@ async function authenticateRequest(request: NextRequest): Promise<{ user: User |
   }
 }
 
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(
+  request: NextRequest,
+  context: RouteContext
+) {
   try {
+    // Await params in Next.js 15+
+    const params = await context.params
+    
     const { user, error } = await authenticateRequest(request)
     
     if (error || !user) {
@@ -83,8 +90,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export async function PATCH(
+  request: NextRequest,
+  context: RouteContext
+) {
   try {
+    // Await params in Next.js 15+
+    const params = await context.params
+    
     const { user, error } = await authenticateRequest(request)
     
     if (error || !user) {

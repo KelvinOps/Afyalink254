@@ -26,11 +26,16 @@ export async function POST(request: NextRequest) {
 
     // Generate new access token
     const newAccessToken = await signToken({
-      userId: payload.userId,
+      id: payload.id,
       email: payload.email,
+      name: payload.name,
       role: payload.role,
+      hospitalId: payload.hospitalId,
       facilityId: payload.facilityId,
       countyId: payload.countyId,
+      facilityType: payload.facilityType,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
       permissions: payload.permissions
     })
 

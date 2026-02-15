@@ -5,9 +5,6 @@ import { cookies } from 'next/headers'
 import { prisma } from '@/app/lib/prisma'
 import { Prisma } from '@prisma/client'
 
-// ── Inferred Prisma result types derived directly from the select shapes ──────
-// Using Prisma.validator keeps these in sync with the schema automatically —
-// if you ever add/remove a field from the select, the type updates too.
 
 const hospitalSelect = Prisma.validator<Prisma.HospitalSelect>()({
   id: true, name: true, code: true

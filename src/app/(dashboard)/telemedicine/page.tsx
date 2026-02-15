@@ -43,7 +43,9 @@ export default async function TelemedicinePage() {
         </div>
       </div>
 
-      <TelemedicineStats userId={user.id} />
+      <Suspense fallback={<div>Loading statistics...</div>}>
+        <TelemedicineStats />
+      </Suspense>
 
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
@@ -66,7 +68,7 @@ export default async function TelemedicinePage() {
               </CardHeader>
               <CardContent>
                 <Suspense fallback={<div>Loading recent sessions...</div>}>
-                  <RecentSessions userId={user.id} />
+                  <RecentSessions />
                 </Suspense>
               </CardContent>
             </Card>
@@ -83,7 +85,7 @@ export default async function TelemedicinePage() {
               </CardHeader>
               <CardContent>
                 <Suspense fallback={<div>Loading upcoming sessions...</div>}>
-                  <UpcomingSessions userId={user.id} />
+                  <UpcomingSessions />
                 </Suspense>
               </CardContent>
             </Card>
@@ -100,7 +102,7 @@ export default async function TelemedicinePage() {
             </CardHeader>
             <CardContent>
               <Suspense fallback={<div>Loading sessions...</div>}>
-                <RecentSessions userId={user.id} />
+                <RecentSessions />
               </Suspense>
             </CardContent>
           </Card>
@@ -116,7 +118,7 @@ export default async function TelemedicinePage() {
             </CardHeader>
             <CardContent>
               <Suspense fallback={<div>Loading upcoming sessions...</div>}>
-                <UpcomingSessions userId={user.id} />
+                <UpcomingSessions />
               </Suspense>
             </CardContent>
           </Card>

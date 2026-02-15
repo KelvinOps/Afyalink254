@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/app/lib/prisma';
 import { verifyToken, ROLE_PERMISSIONS } from '@/app/lib/auth';
+import { Prisma } from '@prisma/client';
 
 const updateTransferSchema = z.object({
   reason: z.string().optional(),
@@ -19,7 +20,11 @@ const updateTransferSchema = z.object({
   arrivalTime: z.string().datetime().optional(),
 });
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+// FIXED: params must be a Promise in Next.js 15+
+export async function GET(
+  request: NextRequest, 
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     // Get authorization header
     const authHeader = request.headers.get('authorization');
@@ -35,8 +40,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // FIXED: Await params
+    const { id } = await params
+
     const transfer = await prisma.transfer.findUnique({
-      where: { id: params.id },
+      where: { id: id },
       include: {
         patient: {
           select: {
@@ -148,7 +156,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(
+  request: NextRequest, 
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     // Get authorization header
     const authHeader = request.headers.get('authorization');
@@ -174,8 +185,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // FIXED: Await params
+    const { id } = await params
+
     const transfer = await prisma.transfer.findUnique({
-      where: { id: params.id },
+      where: { id: id },
     });
 
     if (!transfer) {
@@ -203,13 +217,52 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const data = validationResult.data;
     const oldData = { ...transfer };
 
+    // Build update data with proper typing
+    const updateData: Prisma.TransferUpdateInput = {}
+
+    // Handle text fields
+    if (data.reason !== undefined) updateData.reason = data.reason
+    if (data.diagnosis !== undefined) updateData.diagnosis = data.diagnosis
+    if (data.specialNeeds !== undefined) {
+      updateData.specialNeeds = data.specialNeeds || { set: null }
+    }
+
+    // Handle enums
+    if (data.urgency !== undefined) updateData.urgency = data.urgency
+    if (data.transportMode !== undefined) updateData.transportMode = data.transportMode
+
+    // Handle arrays
+    if (data.icd10Codes !== undefined) updateData.icd10Codes = data.icd10Codes
+    if (data.requiredResources !== undefined) updateData.requiredResources = data.requiredResources
+
+    // Handle JSON
+    if (data.vitalSigns !== undefined) {
+      updateData.vitalSigns = data.vitalSigns as Prisma.InputJsonValue
+    }
+
+    // Handle numbers
+    if (data.estimatedCost !== undefined) {
+      updateData.estimatedCost = data.estimatedCost || { set: null }
+    }
+
+    // Handle relations
+    if (data.ambulanceId !== undefined) {
+      updateData.ambulance = data.ambulanceId 
+        ? { connect: { id: data.ambulanceId } }
+        : { disconnect: true }
+    }
+
+    // Handle DateTime fields
+    if (data.departureTime !== undefined) {
+      updateData.departureTime = data.departureTime ? new Date(data.departureTime) : { set: null }
+    }
+    if (data.arrivalTime !== undefined) {
+      updateData.arrivalTime = data.arrivalTime ? new Date(data.arrivalTime) : { set: null }
+    }
+
     const updatedTransfer = await prisma.transfer.update({
-      where: { id: params.id },
-      data: {
-        ...data,
-        departureTime: data.departureTime ? new Date(data.departureTime) : undefined,
-        arrivalTime: data.arrivalTime ? new Date(data.arrivalTime) : undefined,
-      },
+      where: { id: id },
+      data: updateData,
       include: {
         patient: {
           select: {
@@ -221,7 +274,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       },
     });
 
-    // Create audit log using prisma directly
+    // Create audit log using prisma directly with proper typing
     await prisma.auditLog.create({
       data: {
         userId: user.id,
@@ -234,8 +287,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         changes: {
           old: oldData,
           new: updatedTransfer,
-        },
+        } as Prisma.InputJsonValue,
         facilityId: user.facilityId,
+        timestamp: new Date(),
       }
     });
 
@@ -249,7 +303,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest, 
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     // Get authorization header
     const authHeader = request.headers.get('authorization');
@@ -275,8 +332,11 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // FIXED: Await params
+    const { id } = await params
+
     const transfer = await prisma.transfer.findUnique({
-      where: { id: params.id },
+      where: { id: id },
     });
 
     if (!transfer) {
@@ -293,7 +353,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
     // Update the transfer status to cancelled
     await prisma.transfer.update({
-      where: { id: params.id },
+      where: { id: id },
       data: {
         status: 'CANCELLED',
         cancelledAt: new Date(),
@@ -312,6 +372,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
         entityId: transfer.id,
         description: `Cancelled transfer ${transfer.transferNumber}`,
         facilityId: user.facilityId,
+        timestamp: new Date(),
       }
     });
 

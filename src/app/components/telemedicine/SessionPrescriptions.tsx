@@ -19,6 +19,10 @@ interface Medication {
   strength?: string
 }
 
+// ── FIX: All date fields typed as `string | Date`.
+// NewPrescriptionForm.Prescription uses `string` for these fields,
+// but this component works with Date objects. The union satisfies
+// both sides and eliminates the ts(2719) type mismatch on onSave.
 interface Prescription {
   id: string
   prescriptionNumber: string
@@ -31,17 +35,17 @@ interface Prescription {
   unit?: string
   instructions?: string
   specialInstructions?: string
-  startDate?: Date
-  endDate?: Date
+  startDate?: string | Date
+  endDate?: string | Date
   asNeeded: boolean
   prnIndication?: string
   status: string
   isDispensed: boolean
-  dispensedAt?: Date
+  dispensedAt?: string | Date
   refillsAllowed: number
   refillsUsed: number
   requiresReview: boolean
-  reviewDate?: Date
+  reviewDate?: string | Date
   cost?: number
   shaCovered: boolean
   prescribedBy: {
@@ -50,7 +54,7 @@ interface Prescription {
     lastName: string
     role: string
   }
-  createdAt: Date
+  createdAt: string | Date
 }
 
 interface TelemedicineSession {
@@ -75,6 +79,7 @@ interface TelemedicineSession {
 interface CurrentUser {
   id: string
   role: 'DOCTOR' | 'SUPER_ADMIN' | 'HOSPITAL_ADMIN' | 'NURSE' | 'PHARMACIST' | string
+  name: string
   firstName?: string
   lastName?: string
   email?: string
@@ -91,7 +96,7 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
   const [showNewPrescription, setShowNewPrescription] = useState(false)
   const [prescriptions, setPrescriptions] = useState<Prescription[]>(session.prescriptions || [])
 
-  const canPrescribe = currentUser.role === 'DOCTOR' || 
+  const canPrescribe = currentUser.role === 'DOCTOR' ||
                       currentUser.role === 'SUPER_ADMIN' ||
                       currentUser.role === 'HOSPITAL_ADMIN'
 
@@ -100,7 +105,6 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
   const handleNewPrescription = (prescription: Prescription) => {
     setPrescriptions(prev => [prescription, ...prev])
     setShowNewPrescription(false)
-    
     toast({
       title: "Prescription Created",
       description: "New prescription has been added successfully.",
@@ -109,22 +113,17 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'ACTIVE':
-        return 'default'
-      case 'COMPLETED':
-        return 'secondary'
-      case 'CANCELLED':
-        return 'destructive'
-      case 'EXPIRED':
-        return 'outline'
-      case 'DISCONTINUED':
-        return 'destructive'
-      default:
-        return 'outline'
+      case 'ACTIVE':       return 'default'
+      case 'COMPLETED':    return 'secondary'
+      case 'CANCELLED':    return 'destructive'
+      case 'EXPIRED':      return 'outline'
+      case 'DISCONTINUED': return 'destructive'
+      default:             return 'outline'
     }
   }
 
-  const formatDate = (date: Date) => {
+  // Accepts both string and Date since Prescription date fields are now string | Date
+  const formatDate = (date: string | Date) => {
     return new Date(date).toLocaleDateString('en-KE', {
       year: 'numeric',
       month: 'short',
@@ -134,15 +133,15 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
   }
 
   const checkAllergyConflict = (medicationName: string) => {
-    return session.patient.allergies.some(allergy => 
+    return session.patient.allergies.some(allergy =>
       medicationName.toLowerCase().includes(allergy.toLowerCase()) ||
       allergy.toLowerCase().includes(medicationName.toLowerCase())
     )
   }
 
-  const activePrescriptions = prescriptions.filter(p => p.status === 'ACTIVE')
+  const activePrescriptions    = prescriptions.filter(p => p.status === 'ACTIVE')
   const completedPrescriptions = prescriptions.filter(p => p.status === 'COMPLETED')
-  const otherPrescriptions = prescriptions.filter(p => !['ACTIVE', 'COMPLETED'].includes(p.status))
+  const otherPrescriptions     = prescriptions.filter(p => !['ACTIVE', 'COMPLETED'].includes(p.status))
 
   return (
     <div className="space-y-6">
@@ -154,7 +153,6 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
             Manage medications and prescriptions for {session.patient.firstName} {session.patient.lastName}
           </p>
         </div>
-        
         {canPrescribe && isSpecialist && (
           <Button onClick={() => setShowNewPrescription(true)}>
             <Plus className="h-4 w-4 mr-2" />
@@ -218,7 +216,6 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
                 <TableBody>
                   {activePrescriptions.map((prescription) => {
                     const hasAllergyConflict = checkAllergyConflict(prescription.medication.name)
-                    
                     return (
                       <TableRow key={prescription.id} className={hasAllergyConflict ? 'bg-red-50' : ''}>
                         <TableCell>
@@ -250,15 +247,11 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
                           <div>
                             <div>{prescription.frequency}</div>
                             {prescription.asNeeded && (
-                              <Badge variant="outline" className="text-xs">
-                                PRN
-                              </Badge>
+                              <Badge variant="outline" className="text-xs">PRN</Badge>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {prescription.duration || 'Until review'}
-                        </TableCell>
+                        <TableCell>{prescription.duration || 'Until review'}</TableCell>
                         <TableCell>
                           <Badge variant={getStatusColor(prescription.status)}>
                             {prescription.status}
@@ -266,13 +259,9 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <Button variant="outline" size="sm">
-                              View
-                            </Button>
+                            <Button variant="outline" size="sm">View</Button>
                             {canPrescribe && isSpecialist && (
-                              <Button variant="outline" size="sm">
-                                Edit
-                              </Button>
+                              <Button variant="outline" size="sm">Edit</Button>
                             )}
                           </div>
                         </TableCell>
@@ -294,9 +283,7 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
               <FileText className="h-5 w-5 text-blue-600" />
               Completed Prescriptions
             </CardTitle>
-            <CardDescription>
-              Previously completed medication courses
-            </CardDescription>
+            <CardDescription>Previously completed medication courses</CardDescription>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[300px]">
@@ -329,9 +316,7 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {prescription.duration || 'N/A'}
-                      </TableCell>
+                      <TableCell>{prescription.duration || 'N/A'}</TableCell>
                       <TableCell>
                         {prescription.endDate ? formatDate(prescription.endDate) : 'N/A'}
                       </TableCell>
@@ -354,9 +339,7 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
         <Card>
           <CardHeader>
             <CardTitle>Other Prescriptions</CardTitle>
-            <CardDescription>
-              Cancelled, expired, or discontinued medications
-            </CardDescription>
+            <CardDescription>Cancelled, expired, or discontinued medications</CardDescription>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[300px]">
@@ -376,9 +359,7 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
                       <TableCell>
                         <div className="font-medium">{prescription.medication.name}</div>
                       </TableCell>
-                      <TableCell>
-                        {prescription.dosage}
-                      </TableCell>
+                      <TableCell>{prescription.dosage}</TableCell>
                       <TableCell>
                         <Badge variant={getStatusColor(prescription.status)}>
                           {prescription.status}
@@ -386,14 +367,12 @@ export function SessionPrescriptions({ session, currentUser }: SessionPrescripti
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground">
-                          {prescription.status === 'CANCELLED' && 'Prescription cancelled'}
-                          {prescription.status === 'EXPIRED' && 'Prescription expired'}
+                          {prescription.status === 'CANCELLED'    && 'Prescription cancelled'}
+                          {prescription.status === 'EXPIRED'      && 'Prescription expired'}
                           {prescription.status === 'DISCONTINUED' && 'Medication discontinued'}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {formatDate(prescription.createdAt)}
-                      </TableCell>
+                      <TableCell>{formatDate(prescription.createdAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

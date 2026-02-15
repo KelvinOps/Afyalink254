@@ -6,7 +6,7 @@ export interface StaffFormData {
   email: string
   phone: string
   nationalId?: string
-  gender: Gender
+  gender?: Gender
   role: StaffRole
   specialization?: string
   licenseNumber?: string
@@ -26,43 +26,45 @@ export interface StaffFormData {
   canGiveRemoteConsultations: boolean
 }
 
+// FIXED: Make Staff type match what the service actually returns
 export interface Staff {
   id: string
   firstName: string
   lastName: string
   email: string
-  phone: string | null
-  nationalId?: string | null
-  gender: Gender | null // Make optional to match service
+  phone: string
+  nationalId: string | null
   staffNumber: string
   role: StaffRole
-  facilityType: FacilityType | null
+  facilityType: FacilityType
   employmentType: EmploymentType
   contractType: ContractType
-  specialization?: string | null
-  licenseNumber?: string | null
-  licensingBody?: string | null
-  yearsOfExperience?: number | null
-  monthlySalary?: number | null
+  specialization: string | null
+  licenseNumber: string | null
+  licensingBody: string | null
+  yearsOfExperience: number | null
+  monthlySalary: number | null
   hireDate: Date
   isActive: boolean
   telemedicineEnabled: boolean
   canGiveRemoteConsultations: boolean
   userId: string
   isOnDuty: boolean
-  shiftStart?: Date | null
-  shiftEnd?: Date | null
+  shiftStart: Date | null
+  shiftEnd: Date | null
   currentCaseload: number
   maxCaseload: number
-  lastPaidDate?: Date | null
+  lastPaidDate: Date | null
   pendingSalaryMonths: number
-  hospitalId?: string | null
-  healthCenterId?: string | null
-  dispensaryId?: string | null
-  departmentId?: string | null
+  passwordHash: string | null
+  lastLoginAt: Date | null
+  hospitalId: string | null
+  healthCenterId: string | null
+  dispensaryId: string | null
+  departmentId: string | null
   createdAt: Date
   updatedAt: Date
-  // Make related entities optional
+  // Related entities (from includes)
   hospital?: {
     id: string
     name: string
